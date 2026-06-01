@@ -1,0 +1,1349 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trading OS 短线交易决策系统</title>
+    <style>
+      :root {
+        --bg: #f6f4ee;
+        --panel: #fffdf8;
+        --ink: #20232a;
+        --muted: #68705f;
+        --line: #ded7c8;
+        --dark: #24231f;
+        --red: #b3312c;
+        --green: #2f7d57;
+        --gold: #b47a1b;
+        --blue: #315a86;
+        --soft-red: #f7e5e2;
+        --soft-green: #e6f1ea;
+        --soft-gold: #f6ecd8;
+        --soft-blue: #e5edf5;
+        --shadow: 0 16px 42px rgba(45, 39, 29, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+      }
+
+      header {
+        background: var(--dark);
+        color: #fff9ea;
+        padding: 28px 20px 24px;
+      }
+
+      .wrap {
+        width: min(1220px, calc(100vw - 32px));
+        margin: 0 auto;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 8px;
+        font-size: clamp(30px, 5vw, 46px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      header p,
+      .note,
+      .small {
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      header p {
+        max-width: 920px;
+        color: #eadfca;
+      }
+
+      main {
+        padding: 18px 0 44px;
+      }
+
+      .tabs {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        gap: 8px;
+        padding: 10px 0 14px;
+        background: var(--bg);
+        overflow-x: auto;
+      }
+
+      button,
+      .tab {
+        min-height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--ink);
+        padding: 9px 13px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .tab[aria-selected="true"],
+      button.primary {
+        border-color: var(--dark);
+        background: var(--dark);
+        color: #fff9ea;
+      }
+
+      button.danger {
+        border-color: var(--red);
+        background: var(--red);
+        color: #fff9ea;
+      }
+
+      .panel {
+        display: none;
+      }
+
+      .panel.active {
+        display: block;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+      }
+
+      .card {
+        grid-column: span 4;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+        box-shadow: var(--shadow);
+      }
+
+      .wide {
+        grid-column: span 8;
+      }
+
+      .full {
+        grid-column: 1 / -1;
+      }
+
+      .toolbar,
+      .row,
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .tags,
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 4px 9px;
+        border-radius: 8px;
+        background: #f0ebdf;
+        color: #3c3931;
+        font-size: 13px;
+      }
+
+      .tag.red {
+        background: var(--soft-red);
+        color: var(--red);
+      }
+
+      .tag.green {
+        background: var(--soft-green);
+        color: var(--green);
+      }
+
+      .tag.gold {
+        background: var(--soft-gold);
+        color: var(--gold);
+      }
+
+      .tag.blue {
+        background: var(--soft-blue);
+        color: var(--blue);
+      }
+
+      .metric-grid,
+      .form-grid,
+      .stock-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .metric,
+      .data-box {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fffcf4;
+        padding: 11px;
+      }
+
+      .metric b,
+      .data-box b {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 22px;
+      }
+
+      .progress {
+        width: 100%;
+        height: 10px;
+        overflow: hidden;
+        border-radius: 8px;
+        background: #ebe3d5;
+      }
+
+      .progress span {
+        display: block;
+        width: 0%;
+        height: 100%;
+        background: var(--green);
+        border-radius: inherit;
+        transition: width 0.25s ease;
+      }
+
+      .pipeline {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .step {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fffcf4;
+        padding: 12px;
+      }
+
+      .step b {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .stock-card,
+      .record {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 15px;
+      }
+
+      .stock-card.strong {
+        border-left: 5px solid var(--green);
+      }
+
+      .stock-card.medium {
+        border-left: 5px solid var(--gold);
+      }
+
+      .stock-title,
+      .record-title {
+        font-size: 19px;
+        font-weight: 800;
+      }
+
+      .score {
+        min-width: 64px;
+        border-radius: 8px;
+        background: var(--dark);
+        color: #fff9ea;
+        padding: 8px;
+        text-align: center;
+      }
+
+      .score b {
+        display: block;
+        font-size: 23px;
+      }
+
+      .reason {
+        margin: 10px 0 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      form {
+        display: grid;
+        gap: 14px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: #38352e;
+        font-size: 14px;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid #cec5b5;
+        border-radius: 8px;
+        background: #fffefa;
+        color: var(--ink);
+        padding: 9px 10px;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 86px;
+        resize: vertical;
+      }
+
+      .empty {
+        border: 1px dashed #bbb09d;
+        border-radius: 8px;
+        padding: 22px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .good {
+        border-left: 5px solid var(--green);
+        background: var(--soft-green);
+      }
+
+      .bad {
+        border-left: 5px solid var(--red);
+        background: var(--soft-red);
+      }
+
+      .small {
+        font-size: 13px;
+      }
+
+      @media (max-width: 950px) {
+        .card,
+        .wide {
+          grid-column: 1 / -1;
+        }
+
+        .pipeline,
+        .metric-grid,
+        .form-grid,
+        .stock-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .pipeline,
+        .metric-grid,
+        .form-grid,
+        .stock-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <h1>Trading OS 短线交易决策系统</h1>
+        <p>
+          按 PRD 搭建的短线闭环：市场评分、情绪周期、热点轮动、观察池、10点确认、买卖记录、AI复盘和交易画像。目标不是每天都交易，而是只在系统允许时交易。
+        </p>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <nav class="tabs" aria-label="页面切换">
+        <button class="tab" type="button" aria-selected="true" data-panel="dashboard">驾驶舱</button>
+        <button class="tab" type="button" aria-selected="false" data-panel="recommend">观察池</button>
+        <button class="tab" type="button" aria-selected="false" data-panel="confirm">10点确认</button>
+        <button class="tab" type="button" aria-selected="false" data-panel="trade">买卖记录</button>
+        <button class="tab" type="button" aria-selected="false" data-panel="review">AI复盘</button>
+        <button class="tab" type="button" aria-selected="false" data-panel="coach">交易画像</button>
+      </nav>
+
+      <section class="panel active" id="dashboard">
+        <div class="grid">
+          <article class="card full">
+            <div class="toolbar">
+              <div>
+                <h2>今日系统状态</h2>
+                <p class="note">交易日 9:30-15:00 才生成当日候选；周末和收盘后停止买入推荐。</p>
+              </div>
+              <div class="actions">
+                <button class="primary" type="button" id="refresh-all">刷新系统</button>
+                <button type="button" id="sample-data">查看示例</button>
+              </div>
+            </div>
+            <div class="tags">
+              <span class="tag blue" id="system-status">等待刷新</span>
+              <span class="tag" id="refresh-time">尚未刷新</span>
+              <span class="tag gold" id="next-check">下次自动检查：交易日 9:30</span>
+            </div>
+            <div class="progress"><span id="scan-progress"></span></div>
+          </article>
+
+          <article class="card">
+            <h2>市场评分</h2>
+            <div class="metric"><b id="market-score">--</b><span>低于 60 停止推荐</span></div>
+            <p class="note" id="market-summary">等待刷新。</p>
+            <div class="tags" id="market-tags"></div>
+          </article>
+
+          <article class="card">
+            <h2>情绪周期</h2>
+            <div class="metric"><b id="emotion-stage">--</b><span id="emotion-score">情绪评分 --</span></div>
+            <p class="note">冰点、启动、上升、高潮、分歧、退潮六阶段。</p>
+          </article>
+
+          <article class="card">
+            <h2>热点轮动</h2>
+            <div class="list" id="sector-list">
+              <div class="empty">等待刷新热点。</div>
+            </div>
+          </article>
+
+          <article class="card full">
+            <h2>交易流程</h2>
+            <div class="pipeline">
+              <div class="step"><b>市场中心</b><span class="small">60 分以下停止推荐</span></div>
+              <div class="step"><b>情绪中心</b><span class="small">识别周期阶段</span></div>
+              <div class="step"><b>热点中心</b><span class="small">只做 TOP 板块</span></div>
+              <div class="step"><b>观察池</b><span class="small">收盘或盘中生成候选</span></div>
+              <div class="step"><b>10点确认</b><span class="small">确认而非预测</span></div>
+              <div class="step"><b>AI复盘</b><span class="small">修正模型和行为</span></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" id="recommend">
+        <div class="grid">
+          <article class="card full">
+            <div class="toolbar">
+              <div>
+                <h2>观察池与买入推荐</h2>
+                <p class="note">基于一夜持股法：涨幅、量比、换手、市值、成交量趋势、均线、MACD、尾盘风险和市场环境综合评分。</p>
+              </div>
+              <button class="primary" type="button" id="refresh-recommend">刷新观察池</button>
+            </div>
+          </article>
+          <article class="card full">
+            <div class="list" id="recommend-list">
+              <div class="empty">等待刷新。</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" id="confirm">
+        <div class="grid">
+          <article class="card full">
+            <h2>10点确认中心</h2>
+            <p class="note">PRD 里强调“确认而非预测”。这里用于第二天 10 点判断是否继续持有、减仓或卖出。</p>
+            <div class="metric-grid">
+              <div class="metric"><b>30%</b><span>开盘强度</span></div>
+              <div class="metric"><b>25%</b><span>板块持续性</span></div>
+              <div class="metric"><b>25%</b><span>实时资金</span></div>
+              <div class="metric"><b>20%</b><span>成交量</span></div>
+            </div>
+          </article>
+          <article class="card full">
+            <div class="list" id="confirm-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" id="trade">
+        <div class="grid">
+          <article class="card full">
+            <h2>买卖记录</h2>
+            <form id="trade-form">
+              <input type="hidden" name="id" />
+              <div class="form-grid">
+                <label>股票名称<input name="stockName" required /></label>
+                <label>股票代码<input name="stockCode" required /></label>
+                <label>买入日期<input type="date" name="buyDate" required /></label>
+                <label>买入价格<input type="number" step="0.001" name="buyPrice" required /></label>
+                <label>买入数量<input type="number" step="100" name="quantity" required /></label>
+                <label>卖出日期<input type="date" name="sellDate" /></label>
+                <label>卖出价格<input type="number" step="0.001" name="sellPrice" /></label>
+                <label>来源<select name="source"><option>系统推荐</option><option>自己选择</option></select></label>
+              </div>
+              <div class="actions">
+                <button class="primary" type="submit">保存买卖记录</button>
+                <button type="reset">清空</button>
+              </div>
+            </form>
+          </article>
+          <article class="card full">
+            <div class="card-head">
+              <h2>持仓与历史</h2>
+              <button class="danger" type="button" id="clear-trades">清空记录</button>
+            </div>
+            <div class="metric-grid" id="trade-metrics"></div>
+            <div class="list" id="trade-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" id="review">
+        <div class="grid">
+          <article class="card full">
+            <h2>AI复盘输入</h2>
+            <p class="note">按你的要求，复盘时只需要输入买入日期、卖出日期、买入价格、卖出价格。系统会从买卖记录里自动匹配股票、数量和推荐信息，并生成复盘结论。</p>
+            <form id="quick-review-form">
+              <div class="form-grid">
+                <label>买入日期<input type="date" name="buyDate" required /></label>
+                <label>卖出日期<input type="date" name="sellDate" required /></label>
+                <label>买入价格<input type="number" step="0.001" name="buyPrice" required /></label>
+                <label>卖出价格<input type="number" step="0.001" name="sellPrice" required /></label>
+              </div>
+              <div class="actions">
+                <button class="primary" type="submit">生成复盘</button>
+              </div>
+            </form>
+          </article>
+          <article class="card full">
+            <h2>复盘报告</h2>
+            <div class="list" id="review-list">
+              <div class="empty">还没有复盘报告。</div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" id="coach">
+        <div class="grid">
+          <article class="card full">
+            <h2>个人交易画像</h2>
+            <div class="metric-grid" id="profile-metrics"></div>
+          </article>
+          <article class="card full">
+            <h2>AI交易教练</h2>
+            <div class="list" id="coach-list"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const tradeKey = "trading-os-trades-v1";
+      const reviewKey = "trading-os-reviews-v1";
+      const tabs = document.querySelectorAll(".tab");
+      const panels = document.querySelectorAll(".panel");
+      let latestRecommendations = [];
+      let latestMarket = null;
+      let refreshing = false;
+
+      const sampleStocks = [
+        {
+          code: "000791",
+          name: "甘肃能源",
+          price: 9.84,
+          pct: 1.65,
+          volumeRatio: 2.21,
+          turnover: 8.83,
+          floatValue: 190.47 * 100000000,
+          amount: 16.72 * 100000000,
+          score: 78,
+          priority: "低优先级",
+          level: "观察，不追高",
+          indicators: {
+            ma: "多头排列",
+            macd: "刚金叉",
+            volumeTrend: "台阶放量",
+            amplitude: "7.33%",
+            source: "腾讯行情",
+            dataTime: "2026-05-29 15:00",
+          },
+          reasons: ["量比和换手合格", "均线和 MACD 偏强", "涨幅未到 3%-5% 核心区间", "连续上涨 3 天，回落风险上升"],
+        },
+      ];
+
+      tabs.forEach((tab) => {
+        tab.addEventListener("click", () => showPanel(tab.dataset.panel));
+      });
+
+      document.getElementById("refresh-all").addEventListener("click", refreshSystem);
+      document.getElementById("refresh-recommend").addEventListener("click", refreshSystem);
+      document.getElementById("sample-data").addEventListener("click", () => {
+        latestMarket = {
+          score: 72,
+          summary: "示例环境：可交易，但只做符合条件的票。",
+          tags: ["示例", "非真实推荐"],
+          allow: true,
+        };
+        latestRecommendations = sampleStocks;
+        renderAll();
+        setStatus("示例数据", "gold");
+      });
+
+      document.getElementById("recommend-list").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-buy]");
+        if (!button) return;
+        const stock = JSON.parse(button.dataset.buy);
+        const form = document.getElementById("trade-form");
+        form.reset();
+        form.elements.stockName.value = stock.name;
+        form.elements.stockCode.value = stock.code;
+        form.elements.buyDate.value = isoDate(new Date());
+        form.elements.buyPrice.value = formatPrice(stock.price);
+        form.elements.quantity.value = 1500;
+        form.elements.source.value = "系统推荐";
+        showPanel("trade");
+      });
+
+      document.getElementById("trade-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const data = formValues(event.currentTarget);
+        const records = getStore(tradeKey);
+        const id = data.id || String(Date.now());
+        const next = records.filter((item) => item.id !== id);
+        next.unshift({ ...data, id, savedAt: new Date().toLocaleString("zh-CN") });
+        setStore(tradeKey, next);
+        event.currentTarget.reset();
+        renderTrades();
+        renderProfile();
+      });
+
+      document.getElementById("trade-list").addEventListener("click", (event) => {
+        const edit = event.target.closest("[data-edit]");
+        const del = event.target.closest("[data-delete]");
+        const records = getStore(tradeKey);
+        if (edit) {
+          const item = records.find((record) => record.id === edit.dataset.edit);
+          if (!item) return;
+          const form = document.getElementById("trade-form");
+          Object.entries(item).forEach(([key, value]) => {
+            if (form.elements[key]) form.elements[key].value = value;
+          });
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        if (del) {
+          setStore(tradeKey, records.filter((item) => item.id !== del.dataset.delete));
+          renderTrades();
+          renderProfile();
+        }
+      });
+
+      document.getElementById("clear-trades").addEventListener("click", () => {
+        if (confirm("确定清空所有买卖记录吗？")) {
+          setStore(tradeKey, []);
+          renderTrades();
+          renderProfile();
+        }
+      });
+
+      document.getElementById("quick-review-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const input = formValues(event.currentTarget);
+        const matched = matchTrade(input);
+        const report = buildReview(input, matched);
+        const reports = getStore(reviewKey);
+        reports.unshift(report);
+        setStore(reviewKey, reports);
+        event.currentTarget.reset();
+        renderReviews();
+        renderProfile();
+      });
+
+      async function refreshSystem() {
+        if (refreshing) return;
+        refreshing = true;
+        setStatus("正在刷新", "blue");
+        progress(8);
+
+        try {
+          const gate = getTradingGate();
+          if (!gate.open) {
+            latestMarket = {
+              score: 0,
+              summary: gate.reason,
+              tags: ["停止推荐", "收盘后不追买"],
+              allow: false,
+            };
+            latestRecommendations = [];
+            setStatus("今日不推荐", "red");
+            progress(100);
+            renderAll(gate.reason);
+            return;
+          }
+
+          const stocks = await fetchMainboardStocks();
+          progress(32);
+          latestMarket = evaluateMarket(stocks);
+          if (!latestMarket.allow) {
+            latestRecommendations = [];
+            setStatus("市场不允许", "red");
+            renderAll("市场评分低于 60，停止推荐。");
+            progress(100);
+            return;
+          }
+
+          const filtered = stocks.filter(passFastFilter).slice(0, 120);
+          const scored = [];
+          for (let index = 0; index < filtered.length; index += 1) {
+            const stock = filtered[index];
+            const marketId = stock.code.startsWith("6") ? 1 : 0;
+            const klines = await fetchKlines(stock.code, marketId, 90).catch(() => []);
+            const item = scoreStock(stock, klines);
+            if (item) scored.push(item);
+            progress(35 + Math.round(((index + 1) / filtered.length) * 55));
+          }
+          latestRecommendations = scored
+            .sort((a, b) => b.score - a.score)
+            .slice(0, latestMarket.score >= 75 ? 8 : 5);
+          setStatus(latestRecommendations.length ? "刷新完成" : "无合格候选", latestRecommendations.length ? "green" : "gold");
+          progress(100);
+          renderAll(latestRecommendations.length ? "" : "今天没有足够符合规则的候选。");
+        } catch (error) {
+          setStatus("刷新失败", "red");
+          progress(100);
+          latestRecommendations = [];
+          latestMarket = {
+            score: 0,
+            summary: "行情数据暂时无法读取。",
+            tags: ["数据失败"],
+            allow: false,
+          };
+          renderAll("行情数据暂时无法读取。");
+        } finally {
+          refreshing = false;
+        }
+      }
+
+      async function fetchMainboardStocks() {
+        try {
+          const url =
+            "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=5000&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fs=m:0+t:6,m:1+t:2&fields=f12,f14,f2,f3,f5,f6,f8,f10,f15,f16,f17,f18,f20,f21,f62,f184,f100";
+          const json = await fetchJson(url);
+          return (json.data?.diff || []).map(normalizeEastmoneyStock).filter(Boolean);
+        } catch {
+          return fetchSinaStocks();
+        }
+      }
+
+      async function fetchSinaStocks() {
+        const pages = [1, 2, 3, 4, 5, 6, 7, 8];
+        const batches = await Promise.all(
+          pages.map(async (page) => {
+            const url = `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=${page}&num=80&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=page`;
+            const json = await fetchJson(url);
+            return Array.isArray(json) ? json : [];
+          }),
+        );
+        return batches.flat().map(normalizeSinaStock).filter(Boolean);
+      }
+
+      async function fetchKlines(code, marketId, limit) {
+        try {
+          const end = compactDate(new Date());
+          const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${marketId}.${code}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=101&fqt=1&beg=20200101&end=${end}&lmt=${limit}`;
+          const json = await fetchJson(url);
+          return (json.data?.klines || []).map((line) => {
+            const [date, open, close, high, low, volume, amount, amplitude, pct] = line.split(",");
+            return { date, open: +open, close: +close, high: +high, low: +low, volume: +volume, amount: +amount, amplitude: +amplitude, pct: +pct };
+          });
+        } catch {
+          const prefix = marketId === 1 ? "sh" : "sz";
+          const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${prefix}${code},day,,,${limit},qfq`;
+          const json = await fetchJson(url);
+          const rows = json.data?.[`${prefix}${code}`]?.qfqday || [];
+          return rows.map((row, index) => {
+            const prev = index ? +rows[index - 1][2] : +row[1];
+            const open = +row[1];
+            const close = +row[2];
+            const high = +row[3];
+            const low = +row[4];
+            return { date: row[0], open, close, high, low, volume: +row[5], amount: 0, amplitude: prev ? ((high - low) / prev) * 100 : 0, pct: prev ? ((close - prev) / prev) * 100 : 0 };
+          });
+        }
+      }
+
+      async function fetchJson(url) {
+        const response = await fetch(proxied(url), { cache: "no-store", referrerPolicy: "no-referrer" });
+        if (!response.ok) throw new Error("bad response");
+        return response.json();
+      }
+
+      function proxied(url) {
+        return `/api/proxy?url=${encodeURIComponent(url)}`;
+      }
+
+      function normalizeEastmoneyStock(raw) {
+        const stock = {
+          code: raw.f12,
+          name: raw.f14,
+          price: toNumber(raw.f2),
+          pct: toNumber(raw.f3),
+          volume: toNumber(raw.f5),
+          amount: toNumber(raw.f6),
+          turnover: toNumber(raw.f8),
+          volumeRatio: toNumber(raw.f10),
+          high: toNumber(raw.f15),
+          low: toNumber(raw.f16),
+          open: toNumber(raw.f17),
+          prevClose: toNumber(raw.f18),
+          totalValue: toNumber(raw.f20),
+          floatValue: toNumber(raw.f21),
+          mainInflowPct: toNumber(raw.f184),
+          industry: raw.f100 || "未分类",
+          source: "东方财富",
+        };
+        if (!/^(00|60)/.test(stock.code) || !stock.price) return null;
+        return stock;
+      }
+
+      function normalizeSinaStock(raw) {
+        const stock = {
+          code: raw.code,
+          name: raw.name,
+          price: toNumber(raw.trade),
+          pct: toNumber(raw.changepercent),
+          volume: toNumber(raw.volume),
+          amount: toNumber(raw.amount),
+          turnover: toNumber(raw.turnoverratio),
+          volumeRatio: 1,
+          high: toNumber(raw.high),
+          low: toNumber(raw.low),
+          open: toNumber(raw.open),
+          prevClose: toNumber(raw.settlement),
+          totalValue: toNumber(raw.mktcap) * 10000,
+          floatValue: toNumber(raw.nmc) * 10000,
+          mainInflowPct: 0,
+          industry: "新浪行情",
+          source: "新浪财经",
+        };
+        if (!/^(00|60)/.test(stock.code) || !stock.price) return null;
+        return stock;
+      }
+
+      function evaluateMarket(stocks) {
+        const up = stocks.filter((item) => item.pct > 0).length;
+        const down = stocks.filter((item) => item.pct < 0).length || 1;
+        const ratio = up / down;
+        const strong = stocks.filter((item) => item.pct >= 5).length;
+        const weak = stocks.filter((item) => item.pct <= -5).length;
+        const score = Math.max(0, Math.min(100, Math.round(45 + ratio * 18 + strong * 0.4 - weak * 0.6)));
+        const stage = score >= 80 ? "上升" : score >= 65 ? "启动" : score >= 50 ? "分歧" : "退潮";
+        document.getElementById("emotion-stage").textContent = stage;
+        document.getElementById("emotion-score").textContent = `情绪评分 ${score}`;
+        renderSectors(stocks);
+        return {
+          score,
+          summary: score >= 60 ? "市场评分通过，可以进入观察池筛选。" : "市场评分低于 60，停止推荐。",
+          tags: [`上涨家数 ${up}`, `下跌家数 ${down}`, `涨跌比 ${ratio.toFixed(2)}`],
+          allow: score >= 60,
+        };
+      }
+
+      function renderSectors(stocks) {
+        const map = new Map();
+        stocks.forEach((item) => {
+          const name = item.industry || "未分类";
+          const old = map.get(name) || { name, count: 0, pct: 0, amount: 0 };
+          old.count += 1;
+          old.pct += item.pct;
+          old.amount += item.amount || 0;
+          map.set(name, old);
+        });
+        const sectors = [...map.values()]
+          .map((item) => ({ ...item, score: item.pct / item.count + item.amount / 10000000000 }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3);
+        document.getElementById("sector-list").innerHTML = sectors.length
+          ? sectors.map((item, index) => `<div class="record"><b>TOP${index + 1} ${escapeHtml(item.name)}</b><p class="small">热度评分 ${item.score.toFixed(1)}，样本 ${item.count} 只</p></div>`).join("")
+          : '<div class="empty">暂无热点数据。</div>';
+      }
+
+      function passFastFilter(stock) {
+        const risky = /ST|退|^N|Ｂ|B/.test(stock.name);
+        const amplitude = getAmplitude(stock);
+        return (
+          !risky &&
+          stock.price >= 3 &&
+          stock.amount >= 50000000 &&
+          stock.pct >= 1 &&
+          stock.pct <= 5.8 &&
+          stock.floatValue >= 5000000000 &&
+          stock.floatValue <= 20000000000 &&
+          stock.turnover >= 4 &&
+          stock.turnover <= 12 &&
+          (stock.volumeRatio === 0 || stock.volumeRatio >= 1) &&
+          amplitude <= 8
+        );
+      }
+
+      function scoreStock(stock, klines) {
+        if (klines.length < 30) return scoreWithoutKline(stock);
+        const closes = klines.map((item) => item.close);
+        const volumes = klines.map((item) => item.volume);
+        const latest = klines.at(-1);
+        const ma5 = avg(closes.slice(-5));
+        const ma10 = avg(closes.slice(-10));
+        const ma20 = avg(closes.slice(-20));
+        const macd = getMacd(closes);
+        const volumeTrend = getVolumeTrend(volumes);
+        const floatYi = stock.floatValue / 100000000;
+        const amplitude = latest.amplitude || getAmplitude(stock);
+        const deviation = ((stock.price - ma5) / ma5) * 100;
+        let score = 0;
+        const reasons = [];
+
+        score += scoreRange(stock.pct, 3, 5, 20);
+        score += Math.min(12, Math.max(0, (stock.volumeRatio - 1) * 6 + 6));
+        score += scoreRange(stock.turnover, 5, 10, 18);
+        score += scoreRange(floatYi, 50, 200, 12);
+        score += volumeTrend === "台阶放量" ? 12 : volumeTrend === "放量" ? 7 : 0;
+        score += ma5 > ma10 && ma10 > ma20 ? 12 : ma5 > ma10 ? 7 : 0;
+        score += macd.justGolden ? 10 : macd.isGolden && macd.rising ? 7 : 0;
+        score += Math.max(0, 8 - Math.max(0, amplitude - 5) * 2);
+        score = Math.round(Math.max(0, Math.min(100, score)));
+        if (score < 68) return null;
+
+        if (stock.pct >= 3 && stock.pct <= 5) reasons.push("涨幅处在 3%-5% 核心区间");
+        else reasons.push("涨幅不在核心区间，优先级下降");
+        if (stock.turnover >= 5 && stock.turnover <= 10) reasons.push("换手率处在 5%-10% 核心区间");
+        if (ma5 > ma10 && ma10 > ma20) reasons.push("均线多头排列");
+        if (macd.justGolden) reasons.push("MACD 刚金叉");
+        if (volumeTrend !== "未放量") reasons.push(`成交量${volumeTrend}`);
+
+        return enrich(stock, score, reasons, {
+          ma: ma5 > ma10 && ma10 > ma20 ? "多头排列" : ma5 > ma10 ? "短线偏强" : "不满足",
+          macd: macd.justGolden ? "刚金叉" : macd.isGolden && macd.rising ? "金叉延续" : macd.isGolden ? "金叉" : "未金叉",
+          volumeTrend,
+          amplitude: formatPct(amplitude),
+          deviation: formatPct(deviation),
+          amount: `${formatNumber(stock.amount / 100000000)}亿`,
+          floatValue: `${formatNumber(floatYi)}亿`,
+          source: stock.source,
+        });
+      }
+
+      function scoreWithoutKline(stock) {
+        const floatYi = stock.floatValue / 100000000;
+        const amplitude = getAmplitude(stock);
+        let score =
+          scoreRange(stock.pct, 3, 5, 24) +
+          scoreRange(stock.turnover, 5, 10, 22) +
+          scoreRange(floatYi, 50, 200, 14) +
+          Math.min(12, stock.amount / 100000000) +
+          (stock.price > stock.open ? 8 : 0) +
+          Math.max(0, 8 - Math.max(0, amplitude - 5) * 2);
+        score = Math.min(84, Math.round(score));
+        if (score < 68) return null;
+        return enrich(stock, score, ["K线备用数据不足，自动降级", "仅按涨幅、换手、市值和成交额筛选"], {
+          ma: "数据不足",
+          macd: "数据不足",
+          volumeTrend: "数据不足",
+          amplitude: formatPct(amplitude),
+          deviation: "数据不足",
+          amount: `${formatNumber(stock.amount / 100000000)}亿`,
+          floatValue: `${formatNumber(floatYi)}亿`,
+          source: stock.source,
+        });
+      }
+
+      function enrich(stock, score, reasons, indicators) {
+        const priority = score >= 90 ? "强优先级" : score >= 82 ? "中优先级" : "低优先级";
+        return {
+          ...stock,
+          score,
+          priority,
+          level: score >= 90 ? "可重点确认" : score >= 82 ? "可观察确认" : "谨慎观察",
+          reasons,
+          indicators,
+        };
+      }
+
+      function renderAll(emptyText = "") {
+        renderDashboard();
+        renderRecommendations(emptyText);
+        renderConfirm();
+        renderTrades();
+        renderReviews();
+        renderProfile();
+        document.getElementById("refresh-time").textContent = `最近刷新：${new Date().toLocaleString("zh-CN")}`;
+        document.getElementById("next-check").textContent = `下次自动检查：${nextCheckText()}`;
+      }
+
+      function renderDashboard() {
+        const market = latestMarket || { score: "--", summary: "等待刷新。", tags: [], allow: false };
+        document.getElementById("market-score").textContent = market.score;
+        document.getElementById("market-summary").textContent = market.summary;
+        document.getElementById("market-tags").innerHTML = (market.tags || []).map((tag) => `<span class="tag blue">${escapeHtml(tag)}</span>`).join("");
+      }
+
+      function renderRecommendations(emptyText = "") {
+        const list = document.getElementById("recommend-list");
+        if (!latestRecommendations.length) {
+          list.innerHTML = `<div class="empty">${escapeHtml(emptyText || "还没有候选。")}</div>`;
+          return;
+        }
+        list.innerHTML = latestRecommendations.map(stockCard).join("");
+      }
+
+      function stockCard(item) {
+        return `
+          <article class="stock-card ${item.priority === "强优先级" ? "strong" : "medium"}">
+            <div class="card-head">
+              <div>
+                <div class="stock-title">${escapeHtml(item.name)} ${escapeHtml(item.code)}</div>
+                <div class="small">${escapeHtml(item.industry)} · ${escapeHtml(item.indicators.source || "行情数据")}</div>
+              </div>
+              <div class="score"><b>${item.score}</b>分</div>
+            </div>
+            <div class="tags">
+              <span class="tag ${item.priority === "强优先级" ? "green" : item.priority === "中优先级" ? "gold" : "blue"}">${escapeHtml(item.priority)}</span>
+              <span class="tag">${escapeHtml(item.level)}</span>
+              <span class="tag blue">10点再确认</span>
+            </div>
+            <div class="stock-grid">
+              <div class="data-box"><b>${formatPrice(item.price)}</b><span class="small">现价</span></div>
+              <div class="data-box"><b>${formatPct(item.pct)}</b><span class="small">涨幅</span></div>
+              <div class="data-box"><b>${formatNumber(item.volumeRatio)}</b><span class="small">量比</span></div>
+              <div class="data-box"><b>${formatPct(item.turnover)}</b><span class="small">换手</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.floatValue)}</b><span class="small">流通市值</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.amount)}</b><span class="small">成交额</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.ma)}</b><span class="small">均线</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.macd)}</b><span class="small">MACD</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.volumeTrend)}</b><span class="small">量能趋势</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.amplitude)}</b><span class="small">振幅</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.deviation)}</b><span class="small">偏离 MA5</span></div>
+            </div>
+            <ul class="reason">${item.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
+            <div class="actions">
+              <button class="primary" type="button" data-buy='${escapeAttr(JSON.stringify(item))}'>记录买入</button>
+            </div>
+          </article>
+        `;
+      }
+
+      function renderConfirm() {
+        const trades = getStore(tradeKey).filter((item) => !item.sellPrice);
+        const list = document.getElementById("confirm-list");
+        if (!trades.length) {
+          list.innerHTML = '<div class="empty">暂无持仓需要 10 点确认。</div>';
+          return;
+        }
+        list.innerHTML = trades
+          .map((item) => {
+            const suggestion = "10点看是否强于买入价和开盘价；不强先减仓，跌破买入价 2% 要止损。";
+            return `<article class="record"><div class="record-title">${escapeHtml(item.stockName)} ${escapeHtml(item.stockCode)}</div><p class="small">${escapeHtml(suggestion)}</p></article>`;
+          })
+          .join("");
+      }
+
+      function renderTrades() {
+        const trades = getStore(tradeKey);
+        const sold = trades.filter((item) => Number(item.sellPrice) > 0);
+        const profit = trades.reduce((sum, item) => sum + calcProfit(item), 0);
+        document.getElementById("trade-metrics").innerHTML = metricHtml([
+          ["记录笔数", trades.length],
+          ["持仓笔数", trades.length - sold.length],
+          ["已卖出", sold.length],
+          ["累计盈亏", profit.toFixed(2)],
+        ]);
+        const list = document.getElementById("trade-list");
+        if (!trades.length) {
+          list.innerHTML = '<div class="empty">还没有买卖记录。</div>';
+          return;
+        }
+        list.innerHTML = trades
+          .map((item) => {
+            const profit = calcProfit(item);
+            return `
+              <article class="record ${Number(item.sellPrice) ? (profit >= 0 ? "good" : "bad") : ""}">
+                <div class="card-head">
+                  <div>
+                    <div class="record-title">${escapeHtml(item.stockName)} ${escapeHtml(item.stockCode)}</div>
+                    <div class="small">买入 ${escapeHtml(item.buyDate)}，数量 ${formatNumber(item.quantity)}</div>
+                  </div>
+                  <div class="actions">
+                    <button type="button" data-edit="${escapeAttr(item.id)}">编辑</button>
+                    <button class="danger" type="button" data-delete="${escapeAttr(item.id)}">删除</button>
+                  </div>
+                </div>
+                <div class="tags">
+                  <span class="tag">买入 ${formatPrice(item.buyPrice)}</span>
+                  <span class="tag">卖出 ${item.sellPrice ? formatPrice(item.sellPrice) : "未卖出"}</span>
+                  <span class="tag ${profit >= 0 ? "green" : "red"}">盈亏 ${profit.toFixed(2)}</span>
+                  <span class="tag blue">${escapeHtml(item.source || "系统推荐")}</span>
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+      }
+
+      function renderReviews() {
+        const reports = getStore(reviewKey);
+        const list = document.getElementById("review-list");
+        if (!reports.length) {
+          list.innerHTML = '<div class="empty">还没有复盘报告。</div>';
+          return;
+        }
+        list.innerHTML = reports
+          .map((item) => `
+            <article class="record ${item.profit >= 0 ? "good" : "bad"}">
+              <div class="record-title">${escapeHtml(item.title)}</div>
+              <div class="tags">
+                <span class="tag ${item.profit >= 0 ? "green" : "red"}">盈亏 ${item.profit.toFixed(2)}</span>
+                <span class="tag blue">${escapeHtml(item.execution)}</span>
+                <span class="tag gold">${escapeHtml(item.modelReview)}</span>
+              </div>
+              <p class="small"><strong>复盘：</strong>${escapeHtml(item.summary)}</p>
+              <p class="small"><strong>下次改进：</strong>${escapeHtml(item.nextAction)}</p>
+            </article>
+          `)
+          .join("");
+      }
+
+      function renderProfile() {
+        const trades = getStore(tradeKey);
+        const reviews = getStore(reviewKey);
+        const sold = trades.filter((item) => Number(item.sellPrice) > 0);
+        const wins = sold.filter((item) => calcProfit(item) > 0).length;
+        const recommendationTrades = trades.filter((item) => item.source === "系统推荐").length;
+        document.getElementById("profile-metrics").innerHTML = metricHtml([
+          ["纪律指数", percent(recommendationTrades, trades.length)],
+          ["胜率", percent(wins, sold.length)],
+          ["复盘次数", reviews.length],
+          ["执行力", trades.length ? Math.min(100, Math.round((reviews.length / trades.length) * 100)) + "%" : "0%"],
+        ]);
+        document.getElementById("coach-list").innerHTML = buildCoach(trades, reviews)
+          .map((text) => `<article class="record"><p class="note">${escapeHtml(text)}</p></article>`)
+          .join("");
+      }
+
+      function buildReview(input, matched) {
+        const quantity = Number(matched?.quantity || 0);
+        const profit = matched ? (Number(input.sellPrice) - Number(input.buyPrice)) * quantity : 0;
+        const title = matched ? `${matched.stockName} ${matched.stockCode}` : "未匹配到买卖记录";
+        const execution = profit > 0 ? "结果盈利" : profit < 0 ? "结果亏损" : "结果持平";
+        const modelReview = matched?.source === "系统推荐" ? "复盘推荐准确性" : "复盘个人买入选择";
+        const summary = matched
+          ? `系统已按记录匹配到 ${matched.stockName}，买入 ${input.buyPrice}，卖出 ${input.sellPrice}，数量 ${quantity} 股。`
+          : "没有找到同一买入日期和买入价格的记录，请先在买卖记录里保存这笔交易。";
+        const nextAction = profit >= 0 ? "盈利交易也要看是否按计划卖出，避免下次扩大贪心。" : "亏损交易重点检查是否追高、止损是否拖延。";
+        return {
+          id: String(Date.now()),
+          title,
+          profit,
+          execution,
+          modelReview,
+          summary,
+          nextAction,
+          savedAt: new Date().toLocaleString("zh-CN"),
+        };
+      }
+
+      function matchTrade(input) {
+        const trades = getStore(tradeKey);
+        return trades.find((item) => item.buyDate === input.buyDate && Math.abs(Number(item.buyPrice) - Number(input.buyPrice)) < 0.005);
+      }
+
+      function buildCoach(trades, reviews) {
+        const result = [];
+        if (!trades.length) result.push("先记录每一笔买卖。没有记录，系统无法判断你的行为问题。");
+        if (trades.length && reviews.length < trades.length) result.push("有交易还没有复盘。短炒要靠复盘发现追高、死扛、卖飞。");
+        const open = trades.filter((item) => !item.sellPrice).length;
+        if (open) result.push(`当前还有 ${open} 笔未卖出，第二天要先做 10 点确认。`);
+        if (!result.length) result.push("记录和复盘节奏正常。下一步重点观察哪些推荐条件最容易成功。");
+        return result;
+      }
+
+      function getTradingGate(now = new Date()) {
+        const day = now.getDay();
+        if (day === 0 || day === 6) return { open: false, reason: "今天不是交易日，不生成当日买入候选。" };
+        const minutes = now.getHours() * 60 + now.getMinutes();
+        if (minutes < 9 * 60 + 30) return { open: false, reason: "今天还没开盘，暂不生成候选。" };
+        if (minutes > 15 * 60) return { open: false, reason: "A 股已经收盘，无法再买入，不生成当日候选。" };
+        return { open: true, reason: "" };
+      }
+
+      function showPanel(panelId) {
+        const target = document.getElementById(panelId) ? panelId : "dashboard";
+        tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.panel === target)));
+        panels.forEach((panel) => panel.classList.toggle("active", panel.id === target));
+        history.replaceState(null, "", `#${target}`);
+      }
+
+      function formValues(form) {
+        return Object.fromEntries(new FormData(form).entries());
+      }
+
+      function getStore(key) {
+        try {
+          return JSON.parse(localStorage.getItem(key)) || [];
+        } catch {
+          return [];
+        }
+      }
+
+      function setStore(key, value) {
+        localStorage.setItem(key, JSON.stringify(value));
+      }
+
+      function metricHtml(items) {
+        return items.map(([label, value]) => `<div class="metric"><b>${escapeHtml(value)}</b><span>${escapeHtml(label)}</span></div>`).join("");
+      }
+
+      function calcProfit(item) {
+        if (!Number(item.sellPrice)) return 0;
+        return (Number(item.sellPrice) - Number(item.buyPrice)) * Number(item.quantity || 0);
+      }
+
+      function progress(value) {
+        document.getElementById("scan-progress").style.width = `${value}%`;
+      }
+
+      function setStatus(text, tone) {
+        const el = document.getElementById("system-status");
+        el.textContent = text;
+        el.className = `tag ${tone}`;
+      }
+
+      function nextCheckText() {
+        const now = new Date();
+        const next = new Date(now);
+        next.setHours(9, 30, 0, 0);
+        if (now > next) next.setDate(next.getDate() + 1);
+        while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+        return next.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+      }
+
+      function avg(values) {
+        return values.reduce((sum, value) => sum + value, 0) / (values.length || 1);
+      }
+
+      function scoreRange(value, min, max, full) {
+        if (value < min || value > max) {
+          const distance = value < min ? min - value : value - max;
+          return Math.max(0, full - distance * (full / 2));
+        }
+        const middle = (min + max) / 2;
+        const half = (max - min) / 2 || 1;
+        return full - (Math.abs(value - middle) / half) * (full * 0.15);
+      }
+
+      function getAmplitude(stock) {
+        return stock.prevClose ? ((stock.high - stock.low) / stock.prevClose) * 100 : 0;
+      }
+
+      function getVolumeTrend(volumes) {
+        if (volumes.length < 6) return "数据不足";
+        const recent = volumes.slice(-3);
+        if (recent[2] > recent[1] && recent[1] > recent[0]) return "台阶放量";
+        return recent[2] > avg(volumes.slice(-5)) ? "放量" : "未放量";
+      }
+
+      function getMacd(closes) {
+        const ema12 = ema(closes, 12);
+        const ema26 = ema(closes, 26);
+        const dif = ema12.map((value, index) => value - ema26[index]);
+        const dea = ema(dif, 9);
+        const last = dif.length - 1;
+        return {
+          isGolden: dif[last] > dea[last],
+          justGolden: dif[last] > dea[last] && dif[last - 1] <= dea[last - 1],
+          rising: dif[last] > dif[last - 1],
+        };
+      }
+
+      function ema(values, period) {
+        const k = 2 / (period + 1);
+        const result = [];
+        values.forEach((value, index) => {
+          result[index] = index ? value * k + result[index - 1] * (1 - k) : value;
+        });
+        return result;
+      }
+
+      function percent(value, total) {
+        return total ? `${Math.round((value / total) * 100)}%` : "0%";
+      }
+
+      function toNumber(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : 0;
+      }
+
+      function formatPrice(value) {
+        return Number(value || 0).toFixed(2);
+      }
+
+      function formatNumber(value) {
+        return Number(value || 0).toFixed(2);
+      }
+
+      function formatPct(value) {
+        return `${formatNumber(value)}%`;
+      }
+
+      function isoDate(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+
+      function compactDate(date) {
+        return isoDate(date).replaceAll("-", "");
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value);
+      }
+
+      renderAll();
+      if (location.hash) showPanel(location.hash.slice(1));
+      setInterval(() => {
+        document.getElementById("next-check").textContent = `下次自动检查：${nextCheckText()}`;
+      }, 30000);
+    </script>
+  </body>
+</html>
