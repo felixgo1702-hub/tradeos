@@ -456,9 +456,9 @@
             <div class="toolbar">
               <div>
                 <h2>观察池与买入推荐</h2>
-                <p class="note">基于一夜持股法：涨幅、量比、换手、市值、成交量趋势、均线、MACD、尾盘风险和市场环境综合评分。</p>
+                <p class="note">第一步：当日下午或收盘后生成候选池。候选只代表“值得第二天确认”，不是最终买入。</p>
               </div>
-              <button class="primary" type="button" id="refresh-recommend">刷新观察池</button>
+              <button class="primary" type="button" id="refresh-recommend">生成下午候选池</button>
             </div>
           </article>
           <article class="card full">
@@ -472,8 +472,13 @@
       <section class="panel" id="confirm">
         <div class="grid">
           <article class="card full">
-            <h2>10点确认中心</h2>
-            <p class="note">PRD 里强调“确认而非预测”。这里用于第二天 10 点判断是否继续持有、减仓或卖出。</p>
+            <div class="toolbar">
+              <div>
+                <h2>9:30-10:00 趋势确认</h2>
+                <p class="note">第二步：只确认下午候选池里的股票。看开盘强度、是否翻红、是否强于候选价、是否出现诱多，最后生成最终买入名单。</p>
+              </div>
+              <button class="primary" type="button" id="refresh-confirm">确认当天趋势</button>
+            </div>
             <div class="metric-grid">
               <div class="metric"><b>30%</b><span>开盘强度</span></div>
               <div class="metric"><b>25%</b><span>板块持续性</span></div>
@@ -563,9 +568,11 @@
     <script>
       const tradeKey = "trading-os-trades-v1";
       const reviewKey = "trading-os-reviews-v1";
+      const candidateKey = "trading-os-afternoon-candidates-v1";
       const tabs = document.querySelectorAll(".tab");
       const panels = document.querySelectorAll(".panel");
       let latestRecommendations = [];
+      let latestConfirmations = [];
       let latestMarket = null;
       let refreshing = false;
 
@@ -600,6 +607,7 @@
 
       document.getElementById("refresh-all").addEventListener("click", refreshSystem);
       document.getElementById("refresh-recommend").addEventListener("click", refreshSystem);
+      document.getElementById("refresh-confirm").addEventListener("click", confirmMorningTrend);
       document.getElementById("sample-data").addEventListener("click", () => {
         latestMarket = {
           score: 72,
@@ -608,6 +616,7 @@
           allow: true,
         };
         latestRecommendations = sampleStocks;
+        saveCandidates(sampleStocks, "示例候选");
         renderAll();
         setStatus("示例数据", "gold");
       });
@@ -616,6 +625,17 @@
         const button = event.target.closest("[data-buy]");
         if (!button) return;
         const stock = JSON.parse(button.dataset.buy);
+        fillTradeForm(stock);
+      });
+
+      document.getElementById("confirm-list").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-buy]");
+        if (!button) return;
+        const stock = JSON.parse(button.dataset.buy);
+        fillTradeForm(stock);
+      });
+
+      function fillTradeForm(stock) {
         const form = document.getElementById("trade-form");
         form.reset();
         form.elements.stockName.value = stock.name;
@@ -625,7 +645,7 @@
         form.elements.quantity.value = 1500;
         form.elements.source.value = "系统推荐";
         showPanel("trade");
-      });
+      }
 
       document.getElementById("trade-form").addEventListener("submit", (event) => {
         event.preventDefault();
@@ -731,6 +751,9 @@
           latestRecommendations = scored
             .sort((a, b) => b.score - a.score)
             .slice(0, latestMarket.score >= 75 ? 8 : 5);
+          if (latestRecommendations.length) {
+            saveCandidates(latestRecommendations, gate.reason ? "收盘后候选" : "盘中候选");
+          }
           setStatus(
             latestRecommendations.length ? (gate.reason ? "收盘后候选" : "刷新完成") : "无合格候选",
             latestRecommendations.length ? "green" : "gold",
@@ -750,6 +773,122 @@
           renderAll("行情数据暂时无法读取。");
         } finally {
           refreshing = false;
+        }
+      }
+
+      async function confirmMorningTrend() {
+        const pool = getCandidatePool();
+        if (!pool.items.length) {
+          latestConfirmations = [];
+          renderConfirm();
+          return;
+        }
+
+        setStatus("确认趋势中", "blue");
+        progress(12);
+        try {
+          const stocks = await fetchMainboardStocks();
+          const stockMap = new Map(stocks.map((stock) => [stock.code, stock]));
+          latestConfirmations = pool.items
+            .map((candidate) => buildConfirmation(candidate, stockMap.get(candidate.code)))
+            .sort((a, b) => b.confirmScore - a.confirmScore);
+          setStatus("趋势确认完成", "green");
+          progress(100);
+          renderConfirm();
+        } catch {
+          setStatus("确认失败", "red");
+          progress(100);
+          latestConfirmations = [];
+          renderConfirm();
+        }
+      }
+
+      function buildConfirmation(candidate, current) {
+        if (!current) {
+          return {
+            ...candidate,
+            confirmScore: 0,
+            confirmPassed: false,
+            confirmReasons: ["没有读取到当天开盘后的行情，暂不买入"],
+          };
+        }
+
+        let score = 0;
+        const reasons = [];
+        const openStrength = current.open > candidate.price ? 1 : current.open >= candidate.price * 0.99 ? 0.5 : 0;
+        const holdingCandidatePrice = current.price >= candidate.price;
+        const redOrStrong = current.pct > 0 || current.price > current.open;
+        const notWeakOpen = current.open >= candidate.price * 0.97;
+        const noMorningTrap = !(current.high > current.open * 1.03 && current.price < current.open);
+        const volumeActive = current.amount >= 50000000 || current.turnover >= 4;
+
+        if (openStrength === 1) {
+          score += 22;
+          reasons.push("开盘强于候选价");
+        } else if (openStrength === 0.5) {
+          score += 12;
+          reasons.push("开盘没有明显走弱");
+        } else {
+          reasons.push("低开偏弱");
+        }
+
+        if (holdingCandidatePrice) {
+          score += 22;
+          reasons.push("当前价守住候选价");
+        } else {
+          reasons.push("当前价跌破候选价");
+        }
+
+        if (redOrStrong) {
+          score += 20;
+          reasons.push("开盘后趋势没有转弱");
+        } else {
+          reasons.push("开盘后仍偏弱");
+        }
+
+        if (notWeakOpen) {
+          score += 12;
+          reasons.push("没有低开 3% 以上");
+        } else {
+          reasons.push("低开超过 3%，按纪律谨慎");
+        }
+
+        if (noMorningTrap) {
+          score += 14;
+          reasons.push("没有明显早盘冲高回落诱多");
+        } else {
+          reasons.push("出现冲高回落，暂不买入");
+        }
+
+        if (volumeActive) {
+          score += 10;
+          reasons.push("成交保持活跃");
+        }
+
+        score = Math.round(Math.max(0, Math.min(100, score)));
+        return {
+          ...candidate,
+          current,
+          confirmScore: score,
+          confirmPassed: score >= 72 && holdingCandidatePrice && notWeakOpen && noMorningTrap,
+          confirmReasons: reasons,
+        };
+      }
+
+      function saveCandidates(items, mode) {
+        setStore(candidateKey, {
+          date: isoDate(new Date()),
+          savedAt: new Date().toLocaleString("zh-CN"),
+          mode,
+          items,
+        });
+      }
+
+      function getCandidatePool() {
+        try {
+          return JSON.parse(localStorage.getItem(candidateKey)) || { items: [] };
+        } catch {
+          return { items: [] };
         }
       }
 
@@ -1061,16 +1200,46 @@
       }
 
       function renderConfirm() {
-        const trades = getStore(tradeKey).filter((item) => !item.sellPrice);
         const list = document.getElementById("confirm-list");
-        if (!trades.length) {
-          list.innerHTML = '<div class="empty">暂无持仓需要 10 点确认。</div>';
+        const pool = getCandidatePool();
+        const items = latestConfirmations.length ? latestConfirmations : pool.items;
+        if (!items.length) {
+          list.innerHTML = '<div class="empty">还没有下午候选池。请先在“观察池”里生成候选。</div>';
           return;
         }
-        list.innerHTML = trades
+        const header = latestConfirmations.length
+          ? `<article class="record good"><b>最终买入名单</b><p class="small">已按当天 9:30-10:00 趋势确认。只建议考虑“确认通过”的股票。</p></article>`
+          : `<article class="record"><b>待确认候选池</b><p class="small">${escapeHtml(pool.date || "未记录日期")} · ${escapeHtml(pool.mode || "下午候选")}。第二天 9:30-10:00 点击“确认当天趋势”。</p></article>`;
+        list.innerHTML =
+          header +
+          items
           .map((item) => {
-            const suggestion = "10点看是否强于买入价和开盘价；不强先减仓，跌破买入价 2% 要止损。";
-            return `<article class="record"><div class="record-title">${escapeHtml(item.stockName)} ${escapeHtml(item.stockCode)}</div><p class="small">${escapeHtml(suggestion)}</p></article>`;
+            const passed = item.confirmPassed;
+            const current = item.current || item;
+            return `
+              <article class="record ${passed ? "good" : latestConfirmations.length ? "bad" : ""}">
+                <div class="card-head">
+                  <div>
+                    <div class="record-title">${escapeHtml(item.name)} ${escapeHtml(item.code)}</div>
+                    <div class="small">候选分 ${item.score} · ${escapeHtml(item.priority || "候选")}</div>
+                  </div>
+                  <div class="score"><b>${item.confirmScore ?? "--"}</b>确认</div>
+                </div>
+                <div class="tags">
+                  <span class="tag ${passed ? "green" : latestConfirmations.length ? "red" : "blue"}">${latestConfirmations.length ? (passed ? "确认通过" : "暂不买入") : "等待确认"}</span>
+                  <span class="tag">候选价 ${formatPrice(item.price)}</span>
+                  <span class="tag">当前价 ${formatPrice(current.price)}</span>
+                  <span class="tag blue">涨幅 ${formatPct(current.pct)}</span>
+                  <span class="tag">开盘 ${formatPrice(current.open)}</span>
+                </div>
+                <ul class="reason">${(item.confirmReasons || item.reasons || []).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
+                ${
+                  passed
+                    ? `<div class="actions"><button class="primary" type="button" data-buy='${escapeAttr(JSON.stringify(current))}'>记录买入</button></div>`
+                    : ""
+                }
+              </article>
+            `;
           })
           .join("");
       }
