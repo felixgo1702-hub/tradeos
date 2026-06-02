@@ -401,7 +401,7 @@
             <div class="toolbar">
               <div>
                 <h2>今日系统状态</h2>
-                <p class="note">交易日 9:30 后都可以生成候选；15:00 后会按当天收盘数据生成“收盘后复盘候选”。</p>
+                <p class="note">交易日 9:30 后都可以生成候选；15:00 后会按当天收盘数据生成“明日观察候选池”。</p>
               </div>
               <div class="actions">
                 <button class="primary" type="button" id="refresh-all">刷新系统</button>
@@ -727,8 +727,8 @@
           progress(32);
           latestMarket = evaluateMarket(stocks);
           if (gate.reason) {
-            latestMarket.summary = `${gate.reason}${latestMarket.allow ? " 当前候选用于复盘和下个交易日观察，不代表收盘后还能买入。" : ""}`;
-            latestMarket.tags = ["收盘后模式", ...latestMarket.tags];
+            latestMarket.summary = `${gate.reason}${latestMarket.allow ? " 当前候选会纳入明日观察池，等下个交易日 9:30-10:00 再确认是否买入。" : ""}`;
+            latestMarket.tags = ["明日观察池", ...latestMarket.tags];
           }
           if (!latestMarket.allow) {
             latestRecommendations = [];
@@ -752,10 +752,10 @@
             .sort((a, b) => b.score - a.score)
             .slice(0, latestMarket.score >= 75 ? 8 : 5);
           if (latestRecommendations.length) {
-            saveCandidates(latestRecommendations, gate.reason ? "收盘后候选" : "盘中候选");
+            saveCandidates(latestRecommendations, gate.reason ? "明日观察候选" : "盘中候选");
           }
           setStatus(
-            latestRecommendations.length ? (gate.reason ? "收盘后候选" : "刷新完成") : "无合格候选",
+            latestRecommendations.length ? (gate.reason ? "明日观察候选" : "刷新完成") : "无合格候选",
             latestRecommendations.length ? "green" : "gold",
           );
           progress(100);
@@ -1371,7 +1371,7 @@
         if (day === 0 || day === 6) return { open: false, reason: "今天不是交易日，不生成当日买入候选。" };
         const minutes = now.getHours() * 60 + now.getMinutes();
         if (minutes < 9 * 60 + 30) return { open: false, reason: "今天还没开盘，暂不生成候选。" };
-        if (minutes > 15 * 60) return { open: true, reason: "A 股已收盘，按当天收盘数据生成复盘候选。" };
+        if (minutes > 15 * 60) return { open: true, reason: "A 股已收盘，按当天交易数据生成明日观察候选池。" };
         return { open: true, reason: "" };
       }
 
