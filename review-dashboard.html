@@ -743,7 +743,8 @@
             latestMarket.tags = ["收盘后防守候选", ...latestMarket.tags];
           }
 
-          const filtered = stocks.filter((stock) => passFastFilter(stock, afterCloseMode)).slice(0, afterCloseMode ? 220 : 120);
+          const amountTopCodes = getTopAmountCodes(stocks, 30);
+          const filtered = stocks.filter((stock) => passFastFilter(stock, afterCloseMode, amountTopCodes)).slice(0, afterCloseMode ? 220 : 120);
           const scored = [];
           for (let index = 0; index < filtered.length; index += 1) {
             const stock = filtered[index];
@@ -757,7 +758,7 @@
             .sort((a, b) => b.score - a.score)
             .slice(0, latestMarket.score >= 75 ? 8 : 5);
           if (!latestRecommendations.length && afterCloseMode) {
-            latestRecommendations = buildFallbackCandidates(stocks).slice(0, 8);
+            latestRecommendations = buildFallbackCandidates(stocks, amountTopCodes).slice(0, 8);
           }
           if (latestRecommendations.length) {
             saveCandidates(latestRecommendations, gate.reason ? "明日观察候选" : "盘中候选");
@@ -797,9 +798,24 @@
         try {
           const stocks = await fetchMainboardStocks();
           const stockMap = new Map(stocks.map((stock) => [stock.code, stock]));
-          latestConfirmations = pool.items
+          const confirmations = pool.items
             .map((candidate) => buildConfirmation(candidate, stockMap.get(candidate.code)))
             .sort((a, b) => b.confirmScore - a.confirmScore);
+          const finalBuyCodes = new Set(
+            confirmations
+              .filter((item) => item.confirmPassed)
+              .slice(0, 5)
+              .map((item) => item.code),
+          );
+          latestConfirmations = confirmations.map((item) => ({
+            ...item,
+            confirmPassed: finalBuyCodes.has(item.code),
+            confirmReasons: finalBuyCodes.has(item.code)
+              ? ["进入最终买入名单，按优先级执行", ...item.confirmReasons]
+              : item.confirmScore >= 72
+                ? ["未进入前 5，作为备选观察", ...item.confirmReasons]
+                : item.confirmReasons,
+          }));
           setStatus("趋势确认完成", "green");
           progress(100);
           renderConfirm();
@@ -1047,9 +1063,21 @@
           : '<div class="empty">暂无热点数据。</div>';
       }
 
-      function passFastFilter(stock, relaxed = false) {
+      function getTopAmountCodes(stocks, size) {
+        const ranked = stocks
+          .filter((stock) => Number.isFinite(stock.amount) && stock.amount > 0)
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, size);
+        ranked.forEach((stock, index) => {
+          stock.amountRank = index + 1;
+        });
+        return new Set(ranked.map((stock) => stock.code));
+      }
+
+      function passFastFilter(stock, relaxed = false, amountTopCodes = null) {
         const risky = /ST|退|^N|Ｂ|B/.test(stock.name);
         const amplitude = getAmplitude(stock);
+        if (amountTopCodes && !amountTopCodes.has(stock.code)) return false;
         if (relaxed) {
           return (
             !risky &&
@@ -1081,13 +1109,16 @@
       }
 
       function scoreStock(stock, klines) {
-        if (klines.length < 30) return scoreWithoutKline(stock);
+        if (klines.length < 30) return null;
         const closes = klines.map((item) => item.close);
         const volumes = klines.map((item) => item.volume);
         const latest = klines.at(-1);
         const ma5 = avg(closes.slice(-5));
         const ma10 = avg(closes.slice(-10));
         const ma20 = avg(closes.slice(-20));
+        const multiMa = ma5 > ma10 && ma10 > ma20;
+        const consecutiveUp = countConsecutiveUp(klines);
+        if (!multiMa || stock.price < ma5 || consecutiveUp >= 3) return null;
         const macd = getMacd(closes);
         const volumeTrend = getVolumeTrend(volumes);
         const floatYi = stock.floatValue / 100000000;
@@ -1101,7 +1132,7 @@
         score += scoreRange(stock.turnover, 5, 10, 18);
         score += scoreRange(floatYi, 50, 200, 12);
         score += volumeTrend === "台阶放量" ? 12 : volumeTrend === "放量" ? 7 : 0;
-        score += ma5 > ma10 && ma10 > ma20 ? 12 : ma5 > ma10 ? 7 : 0;
+        score += 12;
         score += macd.justGolden ? 10 : macd.isGolden && macd.rising ? 7 : 0;
         score += Math.max(0, 8 - Math.max(0, amplitude - 5) * 2);
         score = Math.round(Math.max(0, Math.min(100, score)));
@@ -1110,7 +1141,8 @@
         if (stock.pct >= 3 && stock.pct <= 5) reasons.push("涨幅处在 3%-5% 核心区间");
         else reasons.push("涨幅不在核心区间，优先级下降");
         if (stock.turnover >= 5 && stock.turnover <= 10) reasons.push("换手率处在 5%-10% 核心区间");
-        if (ma5 > ma10 && ma10 > ma20) reasons.push("均线多头排列");
+        reasons.push("均线多头排列，且收盘价站上 5 日线");
+        reasons.push(`最近连续上涨 ${consecutiveUp} 天，未触发三连涨排除`);
         if (macd.justGolden) reasons.push("MACD 刚金叉");
         if (volumeTrend !== "未放量") reasons.push(`成交量${volumeTrend}`);
 
@@ -1121,8 +1153,10 @@
           amplitude: formatPct(amplitude),
           deviation: formatPct(deviation),
           amount: `${formatNumber(stock.amount / 100000000)}亿`,
+          amountRank: stock.amountRank ? `第${stock.amountRank}名` : "前30",
           floatValue: `${formatNumber(floatYi)}亿`,
           source: stock.source,
+          consecutiveUp: `${consecutiveUp}天`,
         });
       }
 
@@ -1145,14 +1179,15 @@
           amplitude: formatPct(amplitude),
           deviation: "数据不足",
           amount: `${formatNumber(stock.amount / 100000000)}亿`,
+          amountRank: stock.amountRank ? `第${stock.amountRank}名` : "前30",
           floatValue: `${formatNumber(floatYi)}亿`,
           source: stock.source,
         });
       }
 
-      function buildFallbackCandidates(stocks) {
+      function buildFallbackCandidates(stocks, amountTopCodes) {
         return stocks
-          .filter((stock) => passFastFilter(stock, true))
+          .filter((stock) => passFastFilter(stock, true, amountTopCodes))
           .map((stock) => {
             const amplitude = getAmplitude(stock);
             const floatYi = stock.floatValue / 100000000;
@@ -1165,7 +1200,8 @@
               Math.max(0, 10 - Math.max(0, amplitude - 6) * 2);
             score = Math.round(Math.max(55, Math.min(86, score)));
             const reasons = [
-              "收盘后防守型候选，明早必须二次确认",
+              "补充观察池，不是正式买入名单",
+              "均线和早盘趋势未确认前，不可直接买入",
               stock.pct >= 1 ? "当天收盘仍保持红盘或温和强势" : "当天偏弱，只能观察不能直接买",
               stock.turnover >= 4 ? "换手率达到短线观察区间" : "换手偏低，优先级下降",
               stock.amount >= 100000000 ? "成交额满足流动性要求" : "成交额一般，谨慎观察",
@@ -1177,6 +1213,7 @@
               amplitude: formatPct(amplitude),
               deviation: "待确认",
               amount: `${formatNumber(stock.amount / 100000000)}亿`,
+              amountRank: stock.amountRank ? `第${stock.amountRank}名` : "前30",
               floatValue: `${formatNumber(floatYi)}亿`,
               source: stock.source,
             });
@@ -1245,6 +1282,7 @@
               <div class="data-box"><b>${formatPct(item.turnover)}</b><span class="small">换手</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.floatValue)}</b><span class="small">流通市值</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.amount)}</b><span class="small">成交额</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.amountRank || "前30")}</b><span class="small">成交额排名</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.ma)}</b><span class="small">均线</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.macd)}</b><span class="small">MACD</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.volumeTrend)}</b><span class="small">量能趋势</span></div>
@@ -1506,6 +1544,15 @@
         const recent = volumes.slice(-3);
         if (recent[2] > recent[1] && recent[1] > recent[0]) return "台阶放量";
         return recent[2] > avg(volumes.slice(-5)) ? "放量" : "未放量";
+      }
+
+      function countConsecutiveUp(klines) {
+        let count = 0;
+        for (let index = klines.length - 1; index >= 0; index -= 1) {
+          if (klines[index].close > klines[index].open) count += 1;
+          else break;
+        }
+        return count;
       }
 
       function getMacd(closes) {
