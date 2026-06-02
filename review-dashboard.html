@@ -743,7 +743,7 @@
             latestMarket.tags = ["收盘后防守候选", ...latestMarket.tags];
           }
 
-          const amountTopCodes = getTopAmountCodes(stocks, 30);
+          const amountTopCodes = getTopAmountCodes(stocks, 30, afterCloseMode);
           const filtered = stocks.filter((stock) => passFastFilter(stock, afterCloseMode, amountTopCodes)).slice(0, afterCloseMode ? 220 : 120);
           const scored = [];
           for (let index = 0; index < filtered.length; index += 1) {
@@ -1120,15 +1120,30 @@
           : '<div class="empty">暂无热点数据。</div>';
       }
 
-      function getTopAmountCodes(stocks, size) {
+      function getTopAmountCodes(stocks, size, relaxed = false) {
         const ranked = stocks
-          .filter((stock) => Number.isFinite(stock.amount) && stock.amount > 0)
+          .filter((stock) => passBaseAmountPool(stock, relaxed))
           .sort((a, b) => b.amount - a.amount)
           .slice(0, size);
         ranked.forEach((stock, index) => {
           stock.amountRank = index + 1;
         });
         return new Set(ranked.map((stock) => stock.code));
+      }
+
+      function passBaseAmountPool(stock, relaxed = false) {
+        const risky = /ST|退|^N|Ｂ|B/.test(stock.name);
+        const minFloatValue = relaxed ? 2000000000 : 5000000000;
+        const maxFloatValue = relaxed ? 50000000000 : 20000000000;
+        return (
+          !risky &&
+          /^(00|60)/.test(stock.code) &&
+          stock.price >= 3 &&
+          Number.isFinite(stock.amount) &&
+          stock.amount > 0 &&
+          stock.floatValue >= minFloatValue &&
+          stock.floatValue <= maxFloatValue
+        );
       }
 
       function passFastFilter(stock, relaxed = false, amountTopCodes = null) {
