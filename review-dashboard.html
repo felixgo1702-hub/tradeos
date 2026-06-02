@@ -709,6 +709,7 @@
 
         try {
           const gate = getTradingGate();
+          const afterCloseMode = gate.mode === "afterClose";
           if (!gate.open) {
             latestMarket = {
               score: 0,
@@ -730,15 +731,19 @@
             latestMarket.summary = `${gate.reason}${latestMarket.allow ? " 当前候选会纳入明日观察池，等下个交易日 9:30-10:00 再确认是否买入。" : ""}`;
             latestMarket.tags = ["明日观察池", ...latestMarket.tags];
           }
-          if (!latestMarket.allow) {
+          if (!latestMarket.allow && !afterCloseMode) {
             latestRecommendations = [];
             setStatus("市场不允许", "red");
             renderAll("市场评分低于 60，停止推荐。");
             progress(100);
             return;
           }
+          if (!latestMarket.allow && afterCloseMode) {
+            latestMarket.summary = `${gate.reason} 市场偏弱，仍生成防守型明日观察候选，但第二天必须先确认趋势。`;
+            latestMarket.tags = ["收盘后防守候选", ...latestMarket.tags];
+          }
 
-          const filtered = stocks.filter(passFastFilter).slice(0, 120);
+          const filtered = stocks.filter((stock) => passFastFilter(stock, afterCloseMode)).slice(0, afterCloseMode ? 220 : 120);
           const scored = [];
           for (let index = 0; index < filtered.length; index += 1) {
             const stock = filtered[index];
@@ -751,6 +756,9 @@
           latestRecommendations = scored
             .sort((a, b) => b.score - a.score)
             .slice(0, latestMarket.score >= 75 ? 8 : 5);
+          if (!latestRecommendations.length && afterCloseMode) {
+            latestRecommendations = buildFallbackCandidates(stocks).slice(0, 8);
+          }
           if (latestRecommendations.length) {
             saveCandidates(latestRecommendations, gate.reason ? "明日观察候选" : "盘中候选");
           }
@@ -1039,9 +1047,24 @@
           : '<div class="empty">暂无热点数据。</div>';
       }
 
-      function passFastFilter(stock) {
+      function passFastFilter(stock, relaxed = false) {
         const risky = /ST|退|^N|Ｂ|B/.test(stock.name);
         const amplitude = getAmplitude(stock);
+        if (relaxed) {
+          return (
+            !risky &&
+            stock.price >= 3 &&
+            stock.amount >= 20000000 &&
+            stock.pct >= -2 &&
+            stock.pct <= 8 &&
+            stock.floatValue >= 2000000000 &&
+            stock.floatValue <= 50000000000 &&
+            stock.turnover >= 1.5 &&
+            stock.turnover <= 20 &&
+            (stock.volumeRatio === 0 || stock.volumeRatio >= 0.8) &&
+            amplitude <= 12
+          );
+        }
         return (
           !risky &&
           stock.price >= 3 &&
@@ -1125,6 +1148,40 @@
           floatValue: `${formatNumber(floatYi)}亿`,
           source: stock.source,
         });
+      }
+
+      function buildFallbackCandidates(stocks) {
+        return stocks
+          .filter((stock) => passFastFilter(stock, true))
+          .map((stock) => {
+            const amplitude = getAmplitude(stock);
+            const floatYi = stock.floatValue / 100000000;
+            let score =
+              scoreRange(stock.pct, 1, 5, 28) +
+              scoreRange(stock.turnover, 4, 12, 24) +
+              scoreRange(floatYi, 30, 300, 16) +
+              Math.min(14, stock.amount / 100000000) +
+              (stock.price >= stock.open ? 8 : 0) +
+              Math.max(0, 10 - Math.max(0, amplitude - 6) * 2);
+            score = Math.round(Math.max(55, Math.min(86, score)));
+            const reasons = [
+              "收盘后防守型候选，明早必须二次确认",
+              stock.pct >= 1 ? "当天收盘仍保持红盘或温和强势" : "当天偏弱，只能观察不能直接买",
+              stock.turnover >= 4 ? "换手率达到短线观察区间" : "换手偏低，优先级下降",
+              stock.amount >= 100000000 ? "成交额满足流动性要求" : "成交额一般，谨慎观察",
+            ];
+            return enrich(stock, score, reasons, {
+              ma: "待明早确认",
+              macd: "待明早确认",
+              volumeTrend: "收盘后候选",
+              amplitude: formatPct(amplitude),
+              deviation: "待确认",
+              amount: `${formatNumber(stock.amount / 100000000)}亿`,
+              floatValue: `${formatNumber(floatYi)}亿`,
+              source: stock.source,
+            });
+          })
+          .sort((a, b) => b.score - a.score);
       }
 
       function enrich(stock, score, reasons, indicators) {
@@ -1368,11 +1425,11 @@
 
       function getTradingGate(now = new Date()) {
         const day = now.getDay();
-        if (day === 0 || day === 6) return { open: false, reason: "今天不是交易日，不生成当日买入候选。" };
+        if (day === 0 || day === 6) return { open: false, mode: "closed", reason: "今天不是交易日，不生成当日买入候选。" };
         const minutes = now.getHours() * 60 + now.getMinutes();
-        if (minutes < 9 * 60 + 30) return { open: false, reason: "今天还没开盘，暂不生成候选。" };
-        if (minutes > 15 * 60) return { open: true, reason: "A 股已收盘，按当天交易数据生成明日观察候选池。" };
-        return { open: true, reason: "" };
+        if (minutes < 9 * 60 + 30) return { open: false, mode: "preOpen", reason: "今天还没开盘，暂不生成候选。" };
+        if (minutes > 15 * 60) return { open: true, mode: "afterClose", reason: "A 股已收盘，按当天交易数据生成明日观察候选池。" };
+        return { open: true, mode: "trading", reason: "" };
       }
 
       function showPanel(panelId) {
