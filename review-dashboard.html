@@ -810,7 +810,7 @@
           const finalBuyCodes = new Set(
             confirmations
               .filter((item) => item.confirmPassed)
-              .slice(0, 5)
+              .slice(0, 1)
               .map((item) => item.code),
           );
           latestConfirmations = confirmations.map((item) => ({
@@ -819,7 +819,7 @@
             confirmReasons: finalBuyCodes.has(item.code)
               ? ["进入最终买入名单，按优先级执行", ...item.confirmReasons]
               : item.confirmScore >= 72
-                ? ["未进入前 5，作为备选观察", ...item.confirmReasons]
+                ? ["未进入当日唯一买入名额，作为备选观察", ...item.confirmReasons]
                 : item.confirmReasons,
           }));
           setStatus("趋势确认完成", "green");
@@ -1133,8 +1133,8 @@
 
       function passBaseAmountPool(stock, relaxed = false) {
         const risky = /ST|退|^N|Ｂ|B/.test(stock.name);
-        const minFloatValue = relaxed ? 2000000000 : 5000000000;
-        const maxFloatValue = relaxed ? 50000000000 : 20000000000;
+        const minFloatValue = relaxed ? 2000000000 : 3000000000;
+        const maxFloatValue = relaxed ? 50000000000 : 30000000000;
         return (
           !risky &&
           /^(00|60)/.test(stock.code) &&
@@ -1171,8 +1171,8 @@
           stock.amount >= 50000000 &&
           stock.pct >= 1 &&
           stock.pct <= 5.8 &&
-          stock.floatValue >= 5000000000 &&
-          stock.floatValue <= 20000000000 &&
+          stock.floatValue >= 3000000000 &&
+          stock.floatValue <= 30000000000 &&
           stock.turnover >= 4 &&
           stock.turnover <= 12 &&
           (stock.volumeRatio === 0 || stock.volumeRatio >= 1) &&
@@ -1202,7 +1202,7 @@
         score += scoreRange(stock.pct, 3, 5, 20);
         score += Math.min(12, Math.max(0, (stock.volumeRatio - 1) * 6 + 6));
         score += scoreRange(stock.turnover, 5, 10, 18);
-        score += scoreRange(floatYi, 50, 200, 12);
+        score += scoreRange(floatYi, 30, 300, 12);
         score += volumeTrend === "台阶放量" ? 12 : volumeTrend === "放量" ? 7 : 0;
         score += 12;
         score += macd.justGolden ? 10 : macd.isGolden && macd.rising ? 7 : 0;
@@ -1238,7 +1238,7 @@
         let score =
           scoreRange(stock.pct, 3, 5, 24) +
           scoreRange(stock.turnover, 5, 10, 22) +
-          scoreRange(floatYi, 50, 200, 14) +
+          scoreRange(floatYi, 30, 300, 14) +
           Math.min(12, stock.amount / 100000000) +
           (stock.price > stock.open ? 8 : 0) +
           Math.max(0, 8 - Math.max(0, amplitude - 5) * 2);
@@ -1294,12 +1294,12 @@
       }
 
       function enrich(stock, score, reasons, indicators) {
-        const priority = score >= 90 ? "强优先级" : score >= 82 ? "中优先级" : "低优先级";
+        const priority = score >= 82 ? "A级" : score >= 68 ? "B级" : "C级";
         return {
           ...stock,
           score,
           priority,
-          level: score >= 90 ? "可重点确认" : score >= 82 ? "可观察确认" : "谨慎观察",
+          level: score >= 82 ? "可重点确认" : score >= 68 ? "只观察，10点强才买" : "不买，只记录",
           reasons,
           indicators,
         };
@@ -1334,7 +1334,7 @@
 
       function stockCard(item) {
         return `
-          <article class="stock-card ${item.priority === "强优先级" ? "strong" : "medium"}">
+          <article class="stock-card ${item.priority === "A级" ? "strong" : "medium"}">
             <div class="card-head">
               <div>
                 <div class="stock-title">${escapeHtml(item.name)} ${escapeHtml(item.code)}</div>
@@ -1343,7 +1343,7 @@
               <div class="score"><b>${item.score}</b>分</div>
             </div>
             <div class="tags">
-              <span class="tag ${item.priority === "强优先级" ? "green" : item.priority === "中优先级" ? "gold" : "blue"}">${escapeHtml(item.priority)}</span>
+              <span class="tag ${item.priority === "A级" ? "green" : item.priority === "B级" ? "gold" : "blue"}">${escapeHtml(item.priority)}</span>
               <span class="tag">${escapeHtml(item.level)}</span>
               <span class="tag blue">10点再确认</span>
             </div>
