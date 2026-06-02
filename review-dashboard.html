@@ -401,7 +401,7 @@
             <div class="toolbar">
               <div>
                 <h2>今日系统状态</h2>
-                <p class="note">交易日 9:30-15:00 才生成当日候选；周末和收盘后停止买入推荐。</p>
+                <p class="note">交易日 9:30 后都可以生成候选；15:00 后会按当天收盘数据生成“收盘后复盘候选”。</p>
               </div>
               <div class="actions">
                 <button class="primary" type="button" id="refresh-all">刷新系统</button>
@@ -693,7 +693,7 @@
             latestMarket = {
               score: 0,
               summary: gate.reason,
-              tags: ["停止推荐", "收盘后不追买"],
+              tags: ["停止推荐", "等待交易日数据"],
               allow: false,
             };
             latestRecommendations = [];
@@ -706,6 +706,10 @@
           const stocks = await fetchMainboardStocks();
           progress(32);
           latestMarket = evaluateMarket(stocks);
+          if (gate.reason) {
+            latestMarket.summary = `${gate.reason}${latestMarket.allow ? " 当前候选用于复盘和下个交易日观察，不代表收盘后还能买入。" : ""}`;
+            latestMarket.tags = ["收盘后模式", ...latestMarket.tags];
+          }
           if (!latestMarket.allow) {
             latestRecommendations = [];
             setStatus("市场不允许", "red");
@@ -727,7 +731,10 @@
           latestRecommendations = scored
             .sort((a, b) => b.score - a.score)
             .slice(0, latestMarket.score >= 75 ? 8 : 5);
-          setStatus(latestRecommendations.length ? "刷新完成" : "无合格候选", latestRecommendations.length ? "green" : "gold");
+          setStatus(
+            latestRecommendations.length ? (gate.reason ? "收盘后候选" : "刷新完成") : "无合格候选",
+            latestRecommendations.length ? "green" : "gold",
+          );
           progress(100);
           renderAll(latestRecommendations.length ? "" : "今天没有足够符合规则的候选。");
         } catch (error) {
@@ -1192,7 +1199,7 @@
         if (day === 0 || day === 6) return { open: false, reason: "今天不是交易日，不生成当日买入候选。" };
         const minutes = now.getHours() * 60 + now.getMinutes();
         if (minutes < 9 * 60 + 30) return { open: false, reason: "今天还没开盘，暂不生成候选。" };
-        if (minutes > 15 * 60) return { open: false, reason: "A 股已经收盘，无法再买入，不生成当日候选。" };
+        if (minutes > 15 * 60) return { open: true, reason: "A 股已收盘，按当天收盘数据生成复盘候选。" };
         return { open: true, reason: "" };
       }
 
