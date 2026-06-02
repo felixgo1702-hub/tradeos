@@ -12,5 +12,6 @@ assert.match(html, /A级/, "推荐结果应显示A级");
 assert.match(html, /B级/, "推荐结果应显示B级");
 assert.match(html, /C级/, "推荐结果应显示C级");
 assert.match(html, /slice\(0, 1\)/, "10点最终买入名单应最多1只");
+assert.match(html, /Trading OS 版本：v2026\.06\.03-2/, "页面底部应显示当前版本");
 
 console.log("selection rule checks passed");

@@ -351,6 +351,21 @@
         font-size: 13px;
       }
 
+      .version-footer {
+        border-top: 1px solid var(--line);
+        padding: 18px 0 26px;
+        color: var(--muted);
+        background: #eee8dc;
+      }
+
+      .version-footer .wrap {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
       @media (max-width: 950px) {
         .card,
         .wide {
@@ -565,7 +580,15 @@
       </section>
     </main>
 
+    <footer class="version-footer">
+      <div class="wrap">
+        <span>Trading OS 版本：v2026.06.03-2</span>
+        <span>最近更新：2026-06-03 规则分层版 · 30-300亿 · A/B/C分层 · 10点最多1只</span>
+      </div>
+    </footer>
+
     <script>
+      const appVersion = "v2026.06.03-2";
       const tradeKey = "trading-os-trades-v1";
       const reviewKey = "trading-os-reviews-v1";
       const candidateKey = "trading-os-afternoon-candidates-v1";
