@@ -8,6 +8,15 @@ const allowedHosts = new Set([
 ]);
 
 export default async function handler(request, response) {
+  response.setHeader("access-control-allow-origin", "*");
+  response.setHeader("access-control-allow-methods", "GET,OPTIONS");
+  response.setHeader("access-control-allow-headers", "content-type");
+
+  if (request.method === "OPTIONS") {
+    response.status(204).end();
+    return;
+  }
+
   try {
     const target = request.query?.url;
     if (!target) {
