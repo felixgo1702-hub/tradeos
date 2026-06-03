@@ -582,13 +582,13 @@
 
     <footer class="version-footer">
       <div class="wrap">
-        <span>Trading OS 版本：v2026.06.04-3</span>
-        <span>最近更新：2026-06-04 热门板块优先版 · TOP5硬过滤 · TOP3加分 · 10点/13点确认</span>
+        <span>Trading OS 版本：v2026.06.04-4</span>
+        <span>最近更新：2026-06-04 热门板块放宽版 · 板块内前15 · 均线加分 · 涨幅换手放宽</span>
       </div>
     </footer>
 
     <script>
-      const appVersion = "v2026.06.04-3";
+      const appVersion = "v2026.06.04-4";
       const tradeKey = "trading-os-trades-v1";
       const reviewKey = "trading-os-reviews-v1";
       const candidateKey = "trading-os-afternoon-candidates-v1";
@@ -1313,14 +1313,14 @@
           !risky &&
           stock.price >= 3 &&
           stock.amount >= 50000000 &&
-          stock.pct >= 1 &&
-          stock.pct <= 5.8 &&
-          stock.floatValue >= 3000000000 &&
-          stock.floatValue <= 30000000000 &&
-          stock.turnover >= 4 &&
-          stock.turnover <= 12 &&
-          (stock.volumeRatio === 0 || stock.volumeRatio >= 1) &&
-          amplitude <= 8
+            stock.pct >= 0.5 &&
+            stock.pct <= 7 &&
+            stock.floatValue >= 3000000000 &&
+            stock.floatValue <= 30000000000 &&
+            stock.turnover >= 3 &&
+            stock.turnover <= 15 &&
+            (stock.volumeRatio === 0 || stock.volumeRatio >= 1) &&
+            amplitude <= 10
         );
       }
 
@@ -1339,7 +1339,7 @@
         const volume5 = avg(volumes.slice(-5));
         const volume20 = avg(volumes.slice(-20));
         const volumeExpansion = volume5 > volume20 * 1.2;
-        if (!multiMa || stock.price < ma5 || consecutiveUp >= 3 || hasConsecutiveBearish(klines) || hasLongUpperShadow(latest)) return null;
+        if (stock.price < ma5 || consecutiveUp >= 3 || hasConsecutiveBearish(klines) || hasLongUpperShadow(latest)) return null;
         const macd = getMacd(closes);
         const macdZeroRed = macd.latestDiff > 0 && macd.latestHist > 0;
         const volumeTrend = getVolumeTrend(volumes);
@@ -1350,15 +1350,16 @@
         let score = 0;
         const reasons = [];
 
-        score += scoreRange(stock.pct, 3, 5, 20);
+        score += scoreRange(stock.pct, 2, 6, 20);
         score += Math.min(12, Math.max(0, (stock.volumeRatio - 1) * 6 + 6));
-        score += scoreRange(stock.turnover, 5, 10, 18);
+        score += scoreRange(stock.turnover, 4, 12, 18);
         score += scoreRange(floatYi, 30, 300, 12);
         score += volumeTrend === "台阶放量" ? 12 : volumeTrend === "放量" ? 7 : 0;
         score += recentLimitUp ? 8 : 0;
         score += pullbackFromLimitUp <= 8 ? 6 : 0;
         score += volumeExpansion ? 8 : 0;
         score += 12;
+        score += multiMa ? 8 : 0;
         score += macdZeroRed ? 10 : macd.justGolden ? 8 : macd.isGolden && macd.rising ? 6 : 0;
         score += Math.max(0, 8 - Math.max(0, amplitude - 5) * 2);
         score += sector ? (sector.rank <= 3 ? 10 : 6) : 0;
@@ -1366,10 +1367,10 @@
         if (score < 68) return null;
 
         if (sector) reasons.push(`属于热门板块 TOP${sector.rank}：${sector.name}`);
-        if (stock.pct >= 3 && stock.pct <= 5) reasons.push("涨幅处在 3%-5% 核心区间");
+        if (stock.pct >= 2 && stock.pct <= 6) reasons.push("涨幅处在 2%-6% 核心区间");
         else reasons.push("涨幅不在核心区间，优先级下降");
-        if (stock.turnover >= 5 && stock.turnover <= 10) reasons.push("换手率处在 5%-10% 核心区间");
-        reasons.push("均线多头排列，且收盘价站上 5 日线");
+        if (stock.turnover >= 4 && stock.turnover <= 12) reasons.push("换手率处在 4%-12% 核心区间");
+        reasons.push(multiMa ? "均线多头排列加分，且收盘价站上 5 日线" : "收盘价站上 5 日线，均线多头未完成");
         reasons.push(`最近连续上涨 ${consecutiveUp} 天，未触发三连涨排除`);
         if (recentLimitUp) reasons.push(`近10天出现涨停，距今 ${recentLimitUp.daysAgo} 天`);
         if (pullbackFromLimitUp <= 8) reasons.push("距最近涨停收盘价回调不超过 8%");
@@ -1402,8 +1403,8 @@
         const floatYi = stock.floatValue / 100000000;
         const amplitude = getAmplitude(stock);
         let score =
-          scoreRange(stock.pct, 3, 5, 24) +
-          scoreRange(stock.turnover, 5, 10, 22) +
+          scoreRange(stock.pct, 2, 6, 24) +
+          scoreRange(stock.turnover, 4, 12, 22) +
           scoreRange(floatYi, 30, 300, 14) +
           Math.min(12, stock.amount / 100000000) +
           (stock.price > stock.open ? 8 : 0) +
@@ -1431,8 +1432,8 @@
             const floatYi = stock.floatValue / 100000000;
             const sector = stock.hotSector || null;
             let score =
-              scoreRange(stock.pct, 1, 5, 28) +
-              scoreRange(stock.turnover, 4, 12, 24) +
+              scoreRange(stock.pct, 0.5, 7, 28) +
+              scoreRange(stock.turnover, 3, 15, 24) +
               scoreRange(floatYi, 30, 300, 16) +
               Math.min(14, stock.amount / 100000000) +
               (stock.price >= stock.open ? 8 : 0) +
@@ -1443,8 +1444,8 @@
               "补充观察池，不是正式买入名单",
               sector ? `属于热门板块 TOP${sector.rank}：${sector.name}` : "没有热门板块信息，不应进入正式推荐",
               "均线和早盘趋势未确认前，不可直接买入",
-              stock.pct >= 1 ? "当天收盘仍保持红盘或温和强势" : "当天偏弱，只能观察不能直接买",
-              stock.turnover >= 4 ? "换手率达到短线观察区间" : "换手偏低，优先级下降",
+              stock.pct >= 0.5 ? "当天收盘仍保持红盘或温和强势" : "当天偏弱，只能观察不能直接买",
+              stock.turnover >= 3 ? "换手率达到短线观察区间" : "换手偏低，优先级下降",
               stock.amount >= 100000000 ? "成交额满足流动性要求" : "成交额一般，谨慎观察",
             ];
             return enrich(stock, score, reasons, {

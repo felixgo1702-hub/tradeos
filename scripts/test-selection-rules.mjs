@@ -8,6 +8,13 @@ assert.match(html, /const maxFloatValue = relaxed \? 50000000000 : 30000000000;/
 assert.match(html, /stock\.floatValue >= 3000000000/, "正式候选快速过滤市值下限应为30亿");
 assert.match(html, /stock\.floatValue <= 30000000000/, "正式候选快速过滤市值上限应为300亿");
 assert.match(html, /scoreRange\(floatYi, 30, 300, 12\)/, "正式候选市值评分区间应为30-300亿");
+assert.match(html, /stock\.pct >= 0\.5/, "正式候选涨幅下限应放宽到0.5%");
+assert.match(html, /stock\.pct <= 7/, "正式候选涨幅上限应放宽到7%");
+assert.match(html, /stock\.turnover >= 3/, "正式候选换手下限应放宽到3%");
+assert.match(html, /stock\.turnover <= 15/, "正式候选换手上限应放宽到15%");
+assert.match(html, /amplitude <= 10/, "正式候选振幅应放宽到10%");
+assert.doesNotMatch(html, /if \(!multiMa \|\| stock\.price < ma5/, "均线多头不应作为硬淘汰条件");
+assert.match(html, /score \+= multiMa \? 8 : 0;/, "均线多头应作为加分项");
 assert.match(html, /A级/, "推荐结果应显示A级");
 assert.match(html, /B级/, "推荐结果应显示B级");
 assert.match(html, /C级/, "推荐结果应显示C级");
@@ -30,6 +37,6 @@ assert.match(html, /fetchSinaSectorStocks/, "东方财富不可用时应有新�
 assert.match(html, /新浪行业/, "备用路径应读取新浪行业节点");
 assert.match(html, /getRecentLimitUp/, "近10天涨停应进入候选评分");
 assert.match(html, /pullbackFromLimitUp <= 8/, "涨停后回调8%以内应进入评分");
-assert.match(html, /Trading OS 版本：v2026\.06\.04-3/, "页面底部应显示当前版本");
+assert.match(html, /Trading OS 版本：v2026\.06\.04-4/, "页面底部应显示当前版本");
 
 console.log("selection rule checks passed");

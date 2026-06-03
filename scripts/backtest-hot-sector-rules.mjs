@@ -181,14 +181,14 @@ function passFastFilter(stock, relaxed = false, amountTopCodes = null, hotSector
     !risky &&
     stock.price >= 3 &&
     stock.amount >= 50000000 &&
-    stock.pct >= 1 &&
-    stock.pct <= 5.8 &&
+    stock.pct >= 0.5 &&
+    stock.pct <= 7 &&
     stock.floatValue >= 3000000000 &&
     stock.floatValue <= 30000000000 &&
-    stock.turnover >= 4 &&
-    stock.turnover <= 12 &&
+    stock.turnover >= 3 &&
+    stock.turnover <= 15 &&
     (stock.volumeRatio === 0 || stock.volumeRatio >= 1) &&
-    amplitude <= 8
+    amplitude <= 10
   );
 }
 
@@ -233,7 +233,7 @@ function scoreStock(stock, klines) {
   const volume5 = avg(volumes.slice(-5));
   const volume20 = avg(volumes.slice(-20));
   const volumeExpansion = volume5 > volume20 * 1.2;
-  if (!multiMa || stock.price < ma5 || consecutiveUp >= 3 || hasConsecutiveBearish(klines) || hasLongUpperShadow(latest)) return null;
+  if (stock.price < ma5 || consecutiveUp >= 3 || hasConsecutiveBearish(klines) || hasLongUpperShadow(latest)) return null;
   const macd = getMacd(closes);
   const macdZeroRed = macd.latestDiff > 0 && macd.latestHist > 0;
   const volumeTrend = getVolumeTrend(volumes);
@@ -243,15 +243,16 @@ function scoreStock(stock, klines) {
   let score = 0;
   const reasons = [];
 
-  score += scoreRange(stock.pct, 3, 5, 20);
+  score += scoreRange(stock.pct, 2, 6, 20);
   score += Math.min(12, Math.max(0, (stock.volumeRatio - 1) * 6 + 6));
-  score += scoreRange(stock.turnover, 5, 10, 18);
+  score += scoreRange(stock.turnover, 4, 12, 18);
   score += scoreRange(floatYi, 30, 300, 12);
   score += volumeTrend === "台阶放量" ? 12 : volumeTrend === "放量" ? 7 : 0;
   score += recentLimitUp ? 8 : 0;
   score += pullbackFromLimitUp <= 8 ? 6 : 0;
   score += volumeExpansion ? 8 : 0;
   score += 12;
+  score += multiMa ? 8 : 0;
   score += macdZeroRed ? 10 : macd.justGolden ? 8 : macd.isGolden && macd.rising ? 6 : 0;
   score += Math.max(0, 8 - Math.max(0, amplitude - 5) * 2);
   score += sector ? (sector.rank <= 3 ? 10 : 6) : 0;
@@ -259,7 +260,7 @@ function scoreStock(stock, klines) {
   if (score < 68) return null;
 
   if (sector) reasons.push(`热门板块TOP${sector.rank}:${sector.name}`);
-  if (stock.pct >= 3 && stock.pct <= 5) reasons.push("涨幅3%-5%");
+  if (stock.pct >= 2 && stock.pct <= 6) reasons.push("涨幅2%-6%");
   else reasons.push("涨幅不在核心区间");
   if (recentLimitUp) reasons.push(`近10天涨停${recentLimitUp.daysAgo}天前`);
   if (pullbackFromLimitUp <= 8) reasons.push("涨停回调<=8%");
