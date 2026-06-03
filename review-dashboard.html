@@ -582,13 +582,13 @@
 
     <footer class="version-footer">
       <div class="wrap">
-        <span>Trading OS 版本：v2026.06.04-1</span>
-        <span>最近更新：2026-06-04 文档图片规则版 · 涨停加分 · 10点/13点确认 · 最多2只</span>
+        <span>Trading OS 版本：v2026.06.04-2</span>
+        <span>最近更新：2026-06-04 分时均线加分版 · 涨停加分 · 10点/13点确认 · 最多2只</span>
       </div>
     </footer>
 
     <script>
-      const appVersion = "v2026.06.04-1";
+      const appVersion = "v2026.06.04-2";
       const tradeKey = "trading-os-trades-v1";
       const reviewKey = "trading-os-reviews-v1";
       const candidateKey = "trading-os-afternoon-candidates-v1";
@@ -874,7 +874,9 @@
         const aboveIntradayAvg = current.avgPrice ? current.price > current.avgPrice : current.price > current.open;
         const redOrStrong = current.pct > 0 || current.price > current.open || aboveIntradayAvg;
         const volumeRatioActive = current.volumeRatio >= 2;
-        const intradayMacdStrong = current.intradayMacdStrong === null ? aboveIntradayAvg : current.intradayMacdStrong;
+        const intradayMacdAvailable = current.intradayMacdStrong !== null;
+        const intradayMacdStrong = current.intradayMacdStrong === true;
+        const intradayMacdHardOk = current.intradayMacdStrong !== false;
         const notWeakOpen = openPct >= -2;
         const noMorningTrap = !(current.high > current.open * 1.03 && current.price < current.open);
         const volumeActive = current.amount >= 50000000 || current.turnover >= 4;
@@ -910,6 +912,8 @@
         if (intradayMacdStrong) {
           score += 14;
           reasons.push(current.intradayMacdLabel || "15/60分钟 MACD 转强");
+        } else if (!intradayMacdAvailable) {
+          reasons.push(current.intradayMacdLabel || "分钟MACD数据不足，不作为硬淘汰");
         } else {
           reasons.push(current.intradayMacdLabel || "15/60分钟 MACD 未转强");
         }
@@ -945,7 +949,7 @@
           ...candidate,
           current,
           confirmScore: score,
-          confirmPassed: score >= 72 && openStrength && holdingCandidatePrice && aboveIntradayAvg && volumeRatioActive && intradayMacdStrong && notWeakOpen && noMorningTrap,
+          confirmPassed: score >= 72 && openStrength && holdingCandidatePrice && volumeRatioActive && intradayMacdHardOk && notWeakOpen && noMorningTrap,
           confirmReasons: reasons,
         };
       }
@@ -1749,7 +1753,7 @@
       function getIntradayMacdStatus(k15, k60, date, endTime) {
         const rows15 = k15.filter((item) => item.date === date && item.time <= endTime);
         const rows60 = k60.filter((item) => item.date === date && item.time <= endTime);
-        if (rows15.length < 8 || rows60.length < 3) return { strong: null, label: "分钟MACD数据不足，按分时均线替代确认" };
+        if (rows15.length < 8 || rows60.length < 3) return { strong: null, label: "分钟MACD数据不足，不作为硬淘汰" };
         const macd15 = getMacd(rows15.map((item) => item.close));
         const macd60 = getMacd(rows60.map((item) => item.close));
         const nearZero = Math.abs(macd15.latestDiff) <= rows15.at(-1).close * 0.01;
