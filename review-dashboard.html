@@ -582,13 +582,13 @@
 
     <footer class="version-footer">
       <div class="wrap">
-        <span>Trading OS 版本：v2026.06.04-2</span>
-        <span>最近更新：2026-06-04 分时均线加分版 · 涨停加分 · 10点/13点确认 · 最多2只</span>
+        <span>Trading OS 版本：v2026.06.04-3</span>
+        <span>最近更新：2026-06-04 热门板块优先版 · TOP5硬过滤 · TOP3加分 · 10点/13点确认</span>
       </div>
     </footer>
 
     <script>
-      const appVersion = "v2026.06.04-2";
+      const appVersion = "v2026.06.04-3";
       const tradeKey = "trading-os-trades-v1";
       const reviewKey = "trading-os-reviews-v1";
       const candidateKey = "trading-os-afternoon-candidates-v1";
@@ -597,6 +597,7 @@
       let latestRecommendations = [];
       let latestConfirmations = [];
       let latestMarket = null;
+      let latestHotSectors = [];
       let refreshing = false;
 
       const sampleStocks = [
@@ -750,9 +751,21 @@
           const stocks = await fetchMainboardStocks();
           progress(32);
           latestMarket = evaluateMarket(stocks);
+          const hotSectorNames = new Set(latestHotSectors.map((sector) => sector.name));
+          const hotSectorMap = new Map(latestHotSectors.map((sector) => [sector.name, sector]));
+          stocks.forEach((stock) => {
+            stock.hotSector = hotSectorMap.get(stock.industry) || null;
+          });
           if (gate.reason) {
             latestMarket.summary = `${gate.reason}${latestMarket.allow ? " 当前候选会纳入明日观察池，等下个交易日 9:30-10:00 再确认是否买入。" : ""}`;
             latestMarket.tags = ["明日观察池", ...latestMarket.tags];
+          }
+          if (!latestHotSectors.length) {
+            latestRecommendations = [];
+            setStatus("缺少板块数据", "gold");
+            renderAll("没有读取到有效热门板块，按新规则不生成正式候选。");
+            progress(100);
+            return;
           }
           if (!latestMarket.allow && !afterCloseMode) {
             latestRecommendations = [];
@@ -767,7 +780,7 @@
           }
 
           const amountTopCodes = getTopAmountCodes(stocks, 30, afterCloseMode);
-          const filtered = stocks.filter((stock) => passFastFilter(stock, afterCloseMode, amountTopCodes)).slice(0, afterCloseMode ? 220 : 120);
+          const filtered = stocks.filter((stock) => passFastFilter(stock, afterCloseMode, amountTopCodes, hotSectorNames)).slice(0, afterCloseMode ? 220 : 120);
           const scored = [];
           for (let index = 0; index < filtered.length; index += 1) {
             const stock = filtered[index];
@@ -781,7 +794,7 @@
             .sort((a, b) => b.score - a.score)
             .slice(0, latestMarket.score >= 75 ? 8 : 5);
           if (!latestRecommendations.length && afterCloseMode) {
-            latestRecommendations = buildFallbackCandidates(stocks, amountTopCodes).slice(0, 8);
+            latestRecommendations = buildFallbackCandidates(stocks, amountTopCodes, hotSectorNames).slice(0, 8);
           }
           if (latestRecommendations.length) {
             saveCandidates(latestRecommendations, gate.reason ? "明日观察候选" : "盘中候选");
@@ -973,16 +986,22 @@
 
       async function fetchMainboardStocks() {
         try {
-          const stocks = await fetchSinaStocks("amount", 12);
+          const stocks = await fetchEastmoneySeedStocks();
           if (stocks.length) return stocks;
         } catch {
           // Continue to the secondary source below.
         }
-        return fetchEastmoneySeedStocks();
+        try {
+          const stocks = await fetchSinaSectorStocks();
+          if (stocks.length) return stocks;
+        } catch {
+          // Continue to the final broad source below.
+        }
+        return fetchSinaStocks("amount", 12);
       }
 
       async function fetchEastmoneySeedStocks() {
-        const pages = [1, 2, 3, 4, 5];
+        const pages = [1, 2, 3, 4, 5, 6, 7, 8];
         const batches = await Promise.all(
           pages.map(async (page) => {
             const url =
@@ -1062,6 +1081,31 @@
           }),
         );
         return batches.flat().map(normalizeSinaStock).filter(Boolean);
+      }
+
+      async function fetchSinaSectorStocks() {
+        const nodes = await fetchSinaIndustryNodes();
+        const batches = await Promise.all(
+          nodes.slice(0, 48).map(async (sector) => {
+            const url = `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=80&sort=amount&asc=0&node=${sector.node}&symbol=&_s_r_a=page`;
+            const json = await fetchJson(url);
+            return Array.isArray(json) ? json.map((item) => normalizeSinaSectorStock(item, sector.name)).filter(Boolean) : [];
+          }),
+        );
+        const map = new Map();
+        batches.flat().forEach((stock) => {
+          const old = map.get(stock.code);
+          if (!old || stock.amount > old.amount) map.set(stock.code, stock);
+        });
+        return [...map.values()].sort((a, b) => b.amount - a.amount);
+      }
+
+      async function fetchSinaIndustryNodes() {
+        const url = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodes";
+        const json = await fetchJson(url);
+        const groups = json?.[1]?.find((item) => item?.[0] === "A股")?.[1] || [];
+        const industries = groups.find((item) => item?.[0] === "新浪行业")?.[1] || [];
+        return industries.map(([name, , node]) => ({ name, node })).filter((item) => item.name && item.node);
       }
 
       async function fetchKlines(code, marketId, limit) {
@@ -1150,6 +1194,14 @@
         return stock;
       }
 
+      function normalizeSinaSectorStock(raw, industry) {
+        const stock = normalizeSinaStock(raw);
+        if (!stock) return null;
+        stock.industry = industry;
+        stock.source = "新浪行业行情";
+        return stock;
+      }
+
       function evaluateMarket(stocks) {
         const up = stocks.filter((item) => item.pct > 0).length;
         const down = stocks.filter((item) => item.pct < 0).length || 1;
@@ -1160,32 +1212,50 @@
         const stage = score >= 80 ? "上升" : score >= 65 ? "启动" : score >= 50 ? "分歧" : "退潮";
         document.getElementById("emotion-stage").textContent = stage;
         document.getElementById("emotion-score").textContent = `情绪评分 ${score}`;
-        renderSectors(stocks);
+        latestHotSectors = getHotSectors(stocks, 5);
+        renderSectors(latestHotSectors);
         return {
           score,
-          summary: score >= 60 ? "市场评分通过，可以进入观察池筛选。" : "市场评分低于 60，停止推荐。",
-          tags: [`上涨家数 ${up}`, `下跌家数 ${down}`, `涨跌比 ${ratio.toFixed(2)}`],
+          summary: score >= 60 ? "市场评分通过，先筛热门板块，再筛板块内强个股。" : "市场评分低于 60，停止推荐。",
+          tags: [`上涨家数 ${up}`, `下跌家数 ${down}`, `涨跌比 ${ratio.toFixed(2)}`, `热门板块 ${latestHotSectors.length} 个`],
           allow: score >= 60,
         };
       }
 
-      function renderSectors(stocks) {
+      function getHotSectors(stocks, size = 5) {
         const map = new Map();
         stocks.forEach((item) => {
           const name = item.industry || "未分类";
-          const old = map.get(name) || { name, count: 0, pct: 0, amount: 0 };
+          if (!isValidSectorName(name)) return;
+          const old = map.get(name) || { name, count: 0, pct: 0, amount: 0, up: 0, strong: 0 };
           old.count += 1;
           old.pct += item.pct;
           old.amount += item.amount || 0;
+          if (item.pct > 0) old.up += 1;
+          if (item.pct >= 5) old.strong += 1;
           map.set(name, old);
         });
-        const sectors = [...map.values()]
-          .map((item) => ({ ...item, score: item.pct / item.count + item.amount / 10000000000 }))
+        return [...map.values()]
+          .filter((item) => item.count >= 2)
+          .map((item) => {
+            const avgPct = item.pct / item.count;
+            const upRatio = item.up / item.count;
+            const score = avgPct * 2 + upRatio * 8 + item.amount / 10000000000 + item.strong * 0.8 + item.count * 0.2;
+            return { ...item, avgPct, upRatio, score };
+          })
           .sort((a, b) => b.score - a.score)
-          .slice(0, 3);
+          .slice(0, size)
+          .map((item, index) => ({ ...item, rank: index + 1 }));
+      }
+
+      function isValidSectorName(name) {
+        return name && !["未分类", "新浪行情"].includes(name);
+      }
+
+      function renderSectors(sectors) {
         document.getElementById("sector-list").innerHTML = sectors.length
-          ? sectors.map((item, index) => `<div class="record"><b>TOP${index + 1} ${escapeHtml(item.name)}</b><p class="small">热度评分 ${item.score.toFixed(1)}，样本 ${item.count} 只</p></div>`).join("")
-          : '<div class="empty">暂无热点数据。</div>';
+          ? sectors.map((item) => `<div class="record"><b>TOP${item.rank} ${escapeHtml(item.name)}</b><p class="small">热度评分 ${item.score.toFixed(1)}，板块均涨 ${formatPct(item.avgPct)}，上涨占比 ${percent(item.up, item.count)}，样本 ${item.count} 只</p></div>`).join("")
+          : '<div class="empty">暂无有效热门板块，按规则不生成正式候选。</div>';
       }
 
       function getTopAmountCodes(stocks, size, relaxed = false) {
@@ -1214,10 +1284,11 @@
         );
       }
 
-      function passFastFilter(stock, relaxed = false, amountTopCodes = null) {
+      function passFastFilter(stock, relaxed = false, amountTopCodes = null, hotSectorNames = null) {
         const risky = /ST|退|^N|Ｂ|B/.test(stock.name);
         const amplitude = getAmplitude(stock);
         if (amountTopCodes && !amountTopCodes.has(stock.code)) return false;
+        if (hotSectorNames && !hotSectorNames.has(stock.industry)) return false;
         if (relaxed) {
           return (
             !risky &&
@@ -1270,6 +1341,7 @@
         const floatYi = stock.floatValue / 100000000;
         const amplitude = latest.amplitude || getAmplitude(stock);
         const deviation = ((stock.price - ma5) / ma5) * 100;
+        const sector = stock.hotSector || null;
         let score = 0;
         const reasons = [];
 
@@ -1284,9 +1356,11 @@
         score += 12;
         score += macdZeroRed ? 10 : macd.justGolden ? 8 : macd.isGolden && macd.rising ? 6 : 0;
         score += Math.max(0, 8 - Math.max(0, amplitude - 5) * 2);
+        score += sector ? (sector.rank <= 3 ? 10 : 6) : 0;
         score = Math.round(Math.max(0, Math.min(100, score)));
         if (score < 68) return null;
 
+        if (sector) reasons.push(`属于热门板块 TOP${sector.rank}：${sector.name}`);
         if (stock.pct >= 3 && stock.pct <= 5) reasons.push("涨幅处在 3%-5% 核心区间");
         else reasons.push("涨幅不在核心区间，优先级下降");
         if (stock.turnover >= 5 && stock.turnover <= 10) reasons.push("换手率处在 5%-10% 核心区间");
@@ -1311,6 +1385,9 @@
           amount: `${formatNumber(stock.amount / 100000000)}亿`,
           amountRank: stock.amountRank ? `第${stock.amountRank}名` : "前30",
           floatValue: `${formatNumber(floatYi)}亿`,
+          sectorRank: sector ? `TOP${sector.rank}` : "非热门",
+          sectorScore: sector ? formatNumber(sector.score) : "无",
+          sectorUpRatio: sector ? percent(sector.up, sector.count) : "无",
           source: stock.source,
           consecutiveUp: `${consecutiveUp}天`,
         });
@@ -1341,22 +1418,25 @@
         });
       }
 
-      function buildFallbackCandidates(stocks, amountTopCodes) {
+      function buildFallbackCandidates(stocks, amountTopCodes, hotSectorNames = null) {
         return stocks
-          .filter((stock) => passFastFilter(stock, true, amountTopCodes))
+          .filter((stock) => passFastFilter(stock, true, amountTopCodes, hotSectorNames))
           .map((stock) => {
             const amplitude = getAmplitude(stock);
             const floatYi = stock.floatValue / 100000000;
+            const sector = stock.hotSector || null;
             let score =
               scoreRange(stock.pct, 1, 5, 28) +
               scoreRange(stock.turnover, 4, 12, 24) +
               scoreRange(floatYi, 30, 300, 16) +
               Math.min(14, stock.amount / 100000000) +
               (stock.price >= stock.open ? 8 : 0) +
-              Math.max(0, 10 - Math.max(0, amplitude - 6) * 2);
+              Math.max(0, 10 - Math.max(0, amplitude - 6) * 2) +
+              (sector ? (sector.rank <= 3 ? 10 : 6) : 0);
             score = Math.round(Math.max(55, Math.min(86, score)));
             const reasons = [
               "补充观察池，不是正式买入名单",
+              sector ? `属于热门板块 TOP${sector.rank}：${sector.name}` : "没有热门板块信息，不应进入正式推荐",
               "均线和早盘趋势未确认前，不可直接买入",
               stock.pct >= 1 ? "当天收盘仍保持红盘或温和强势" : "当天偏弱，只能观察不能直接买",
               stock.turnover >= 4 ? "换手率达到短线观察区间" : "换手偏低，优先级下降",
@@ -1371,6 +1451,9 @@
               amount: `${formatNumber(stock.amount / 100000000)}亿`,
               amountRank: stock.amountRank ? `第${stock.amountRank}名` : "前30",
               floatValue: `${formatNumber(floatYi)}亿`,
+              sectorRank: sector ? `TOP${sector.rank}` : "非热门",
+              sectorScore: sector ? formatNumber(sector.score) : "无",
+              sectorUpRatio: sector ? percent(sector.up, sector.count) : "无",
               source: stock.source,
             });
           })
@@ -1429,6 +1512,7 @@
             <div class="tags">
               <span class="tag ${item.priority === "A级" ? "green" : item.priority === "B级" ? "gold" : "blue"}">${escapeHtml(item.priority)}</span>
               <span class="tag">${escapeHtml(item.level)}</span>
+              <span class="tag green">${escapeHtml(item.indicators.sectorRank || "热门板块")}</span>
               <span class="tag blue">10点再确认</span>
             </div>
             <div class="stock-grid">
@@ -1439,6 +1523,8 @@
               <div class="data-box"><b>${escapeHtml(item.indicators.floatValue)}</b><span class="small">流通市值</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.amount)}</b><span class="small">成交额</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.amountRank || "前30")}</b><span class="small">成交额排名</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.sectorScore || "未计算")}</b><span class="small">板块热度</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.sectorUpRatio || "未计算")}</b><span class="small">板块上涨占比</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.ma)}</b><span class="small">均线</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.macd)}</b><span class="small">MACD</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.limitUp || "未计算")}</b><span class="small">近10天涨停</span></div>

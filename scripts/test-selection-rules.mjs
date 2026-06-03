@@ -18,8 +18,14 @@ assert.match(html, /getIntradayMacdStatus/, "次日确认应检查15分钟和60�
 assert.doesNotMatch(html, /confirmPassed:[^\n]+aboveIntradayAvg/, "分时价站上分时均线不应作为硬通过条件");
 assert.doesNotMatch(html, /current\.intradayMacdStrong === null \? aboveIntradayAvg/, "分钟MACD数据不足时不应退回分时均线硬条件");
 assert.doesNotMatch(html, /按分时均线替代确认/, "分钟MACD数据不足时不应提示用分时均线替代确认");
+assert.match(html, /getHotSectors\(stocks, 5\)/, "应先计算热门板块TOP5");
+assert.match(html, /if \(hotSectorNames && !hotSectorNames\.has\(stock\.industry\)\) return false;/, "候选股应硬过滤在热门板块内");
+assert.match(html, /sector\.rank <= 3 \? 10 : 6/, "热门板块TOP3应额外加分");
+assert.match(html, /板块热度/, "推荐卡片应展示板块热度");
+assert.match(html, /fetchSinaSectorStocks/, "东方财富不可用时应有新浪行业板块备用路径");
+assert.match(html, /新浪行业/, "备用路径应读取新浪行业节点");
 assert.match(html, /getRecentLimitUp/, "近10天涨停应进入候选评分");
 assert.match(html, /pullbackFromLimitUp <= 8/, "涨停后回调8%以内应进入评分");
-assert.match(html, /Trading OS 版本：v2026\.06\.04-2/, "页面底部应显示当前版本");
+assert.match(html, /Trading OS 版本：v2026\.06\.04-3/, "页面底部应显示当前版本");
 
 console.log("selection rule checks passed");
