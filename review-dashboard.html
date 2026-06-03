@@ -458,7 +458,7 @@
               <div class="step"><b>情绪中心</b><span class="small">识别周期阶段</span></div>
               <div class="step"><b>热点中心</b><span class="small">只做 TOP 板块</span></div>
               <div class="step"><b>观察池</b><span class="small">收盘或盘中生成候选</span></div>
-              <div class="step"><b>10点确认</b><span class="small">确认而非预测</span></div>
+              <div class="step"><b>10点/13点确认</b><span class="small">确认而非预测</span></div>
               <div class="step"><b>AI复盘</b><span class="small">修正模型和行为</span></div>
             </div>
           </article>
@@ -489,8 +489,8 @@
           <article class="card full">
             <div class="toolbar">
               <div>
-                <h2>9:30-10:00 趋势确认</h2>
-                <p class="note">第二步：只确认下午候选池里的股票。看开盘强度、是否翻红、是否强于候选价、是否出现诱多，最后生成最终买入名单。</p>
+                <h2>10点后 / 13点后趋势确认</h2>
+                <p class="note">第二步：只确认下午候选池里的股票。看开盘区间、量比、分时均线、是否强于候选价、是否出现诱多，最后生成最多2只最终买入名单。</p>
               </div>
               <button class="primary" type="button" id="refresh-confirm">确认当天趋势</button>
             </div>
@@ -582,13 +582,13 @@
 
     <footer class="version-footer">
       <div class="wrap">
-        <span>Trading OS 版本：v2026.06.03-2</span>
-        <span>最近更新：2026-06-03 规则分层版 · 30-300亿 · A/B/C分层 · 10点最多1只</span>
+        <span>Trading OS 版本：v2026.06.04-1</span>
+        <span>最近更新：2026-06-04 文档图片规则版 · 涨停加分 · 10点/13点确认 · 最多2只</span>
       </div>
     </footer>
 
     <script>
-      const appVersion = "v2026.06.03-2";
+      const appVersion = "v2026.06.04-1";
       const tradeKey = "trading-os-trades-v1";
       const reviewKey = "trading-os-reviews-v1";
       const candidateKey = "trading-os-afternoon-candidates-v1";
@@ -833,7 +833,7 @@
           const finalBuyCodes = new Set(
             confirmations
               .filter((item) => item.confirmPassed)
-              .slice(0, 1)
+              .slice(0, 2)
               .map((item) => item.code),
           );
           latestConfirmations = confirmations.map((item) => ({
@@ -842,7 +842,7 @@
             confirmReasons: finalBuyCodes.has(item.code)
               ? ["进入最终买入名单，按优先级执行", ...item.confirmReasons]
               : item.confirmScore >= 72
-                ? ["未进入当日唯一买入名额，作为备选观察", ...item.confirmReasons]
+                ? ["未进入当日前2名买入名额，作为备选观察", ...item.confirmReasons]
                 : item.confirmReasons,
           }));
           setStatus("趋势确认完成", "green");
@@ -868,42 +868,64 @@
 
         let score = 0;
         const reasons = [];
-        const openStrength = current.open > candidate.price ? 1 : current.open >= candidate.price * 0.99 ? 0.5 : 0;
+        const openPct = candidate.prevClose ? ((current.open - candidate.prevClose) / candidate.prevClose) * 100 : ((current.open - candidate.price) / candidate.price) * 100;
+        const openStrength = openPct >= -2 && openPct <= 3;
         const holdingCandidatePrice = current.price >= candidate.price;
-        const redOrStrong = current.pct > 0 || current.price > current.open;
-        const notWeakOpen = current.open >= candidate.price * 0.97;
+        const aboveIntradayAvg = current.avgPrice ? current.price > current.avgPrice : current.price > current.open;
+        const redOrStrong = current.pct > 0 || current.price > current.open || aboveIntradayAvg;
+        const volumeRatioActive = current.volumeRatio >= 2;
+        const intradayMacdStrong = current.intradayMacdStrong === null ? aboveIntradayAvg : current.intradayMacdStrong;
+        const notWeakOpen = openPct >= -2;
         const noMorningTrap = !(current.high > current.open * 1.03 && current.price < current.open);
         const volumeActive = current.amount >= 50000000 || current.turnover >= 4;
 
-        if (openStrength === 1) {
+        if (openStrength) {
           score += 22;
-          reasons.push("开盘强于候选价");
-        } else if (openStrength === 0.5) {
-          score += 12;
-          reasons.push("开盘没有明显走弱");
+          reasons.push("开盘涨幅处在 -2% 到 3% 区间");
         } else {
-          reasons.push("低开偏弱");
+          reasons.push("开盘涨幅不在 -2% 到 3% 区间");
         }
 
         if (holdingCandidatePrice) {
-          score += 22;
-          reasons.push("当前价守住候选价");
+          score += 16;
+          reasons.push(`${current.timeLabel || "确认窗口"}守住候选价`);
         } else {
-          reasons.push("当前价跌破候选价");
+          reasons.push(`${current.timeLabel || "确认窗口"}跌破候选价`);
+        }
+
+        if (aboveIntradayAvg) {
+          score += 18;
+          reasons.push("分时价站上分时均线");
+        } else {
+          reasons.push("分时价未站上分时均线");
+        }
+
+        if (volumeRatioActive) {
+          score += 18;
+          reasons.push("量比达到 2.0 以上");
+        } else {
+          reasons.push("量比不足 2.0");
+        }
+
+        if (intradayMacdStrong) {
+          score += 14;
+          reasons.push(current.intradayMacdLabel || "15/60分钟 MACD 转强");
+        } else {
+          reasons.push(current.intradayMacdLabel || "15/60分钟 MACD 未转强");
         }
 
         if (redOrStrong) {
-          score += 20;
-          reasons.push("开盘后趋势没有转弱");
+          score += 8;
+          reasons.push("确认窗口趋势没有转弱");
         } else {
-          reasons.push("开盘后仍偏弱");
+          reasons.push("确认窗口仍偏弱");
         }
 
         if (notWeakOpen) {
-          score += 12;
-          reasons.push("没有低开 3% 以上");
+          score += 8;
+          reasons.push("没有低开 2% 以上");
         } else {
-          reasons.push("低开超过 3%，按纪律谨慎");
+          reasons.push("低开超过 2%，按纪律谨慎");
         }
 
         if (noMorningTrap) {
@@ -914,7 +936,7 @@
         }
 
         if (volumeActive) {
-          score += 10;
+          score += 4;
           reasons.push("成交保持活跃");
         }
 
@@ -923,7 +945,7 @@
           ...candidate,
           current,
           confirmScore: score,
-          confirmPassed: score >= 72 && holdingCandidatePrice && notWeakOpen && noMorningTrap,
+          confirmPassed: score >= 72 && openStrength && holdingCandidatePrice && aboveIntradayAvg && volumeRatioActive && intradayMacdStrong && notWeakOpen && noMorningTrap,
           confirmReasons: reasons,
         };
       }
@@ -970,24 +992,33 @@
 
       async function fetchMorningConfirmationSnapshot(candidate, confirmDate, fallbackCurrent) {
         const marketId = candidate.code.startsWith("6") ? 1 : 0;
-        const [klines, trends] = await Promise.all([
+        const window = getConfirmationWindow();
+        const [klines, trends, k15, k60] = await Promise.all([
           fetchKlines(candidate.code, marketId, 90).catch(() => []),
           fetchTrends(candidate.code, marketId).catch(() => []),
+          fetchPeriodKlines(candidate.code, marketId, 15, 120).catch(() => []),
+          fetchPeriodKlines(candidate.code, marketId, 60, 80).catch(() => []),
         ]);
         const daily = klines.find((item) => item.date === confirmDate);
-        const morning = trends.filter((item) => item.date === confirmDate && item.time >= "09:30" && item.time <= "10:00");
+        const morning = trends.filter((item) => item.date === confirmDate && item.time >= window.start && item.time <= window.end);
         if (!daily || !morning.length) return fallbackCurrent || null;
         const last = morning.at(-1);
         const high = Math.max(...morning.map((item) => item.price));
         const amount = morning.reduce((sum, item) => sum + item.amount, 0);
+        const intradayMacd = getIntradayMacdStatus(k15, k60, confirmDate, window.end);
         return {
           ...fallbackCurrent,
           open: daily.open,
           price: last.price,
+          avgPrice: last.avgPrice,
           high,
           amount,
+          volumeRatio: fallbackCurrent?.volumeRatio || candidate.volumeRatio || 0,
           turnover: daily.turnover,
           pct: daily.open ? ((last.price - daily.open) / daily.open) * 100 : 0,
+          timeLabel: window.label,
+          intradayMacdStrong: intradayMacd.strong,
+          intradayMacdLabel: intradayMacd.label,
         };
       }
 
@@ -1004,6 +1035,16 @@
             volume: +volume,
             amount: +amount,
           };
+        });
+      }
+
+      async function fetchPeriodKlines(code, marketId, period, limit) {
+        const end = compactDate(new Date());
+        const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${marketId}.${code}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt=${period}&fqt=1&beg=20200101&end=${end}&lmt=${limit}`;
+        const json = await fetchJson(url);
+        return (json.data?.klines || []).map((line) => {
+          const [dateTime, open, close, high, low, volume, amount, amplitude, pct] = line.split(",");
+          return { dateTime, date: dateTime.slice(0, 10), time: dateTime.slice(11, 16), open: +open, close: +close, high: +high, low: +low, volume: +volume, amount: +amount, amplitude: +amplitude, pct: +pct };
         });
       }
 
@@ -1213,8 +1254,14 @@
         const ma20 = avg(closes.slice(-20));
         const multiMa = ma5 > ma10 && ma10 > ma20;
         const consecutiveUp = countConsecutiveUp(klines);
-        if (!multiMa || stock.price < ma5 || consecutiveUp >= 3) return null;
+        const recentLimitUp = getRecentLimitUp(klines, 10);
+        const pullbackFromLimitUp = recentLimitUp ? ((recentLimitUp.close - stock.price) / recentLimitUp.close) * 100 : 99;
+        const volume5 = avg(volumes.slice(-5));
+        const volume20 = avg(volumes.slice(-20));
+        const volumeExpansion = volume5 > volume20 * 1.2;
+        if (!multiMa || stock.price < ma5 || consecutiveUp >= 3 || hasConsecutiveBearish(klines) || hasLongUpperShadow(latest)) return null;
         const macd = getMacd(closes);
+        const macdZeroRed = macd.latestDiff > 0 && macd.latestHist > 0;
         const volumeTrend = getVolumeTrend(volumes);
         const floatYi = stock.floatValue / 100000000;
         const amplitude = latest.amplitude || getAmplitude(stock);
@@ -1227,8 +1274,11 @@
         score += scoreRange(stock.turnover, 5, 10, 18);
         score += scoreRange(floatYi, 30, 300, 12);
         score += volumeTrend === "台阶放量" ? 12 : volumeTrend === "放量" ? 7 : 0;
+        score += recentLimitUp ? 8 : 0;
+        score += pullbackFromLimitUp <= 8 ? 6 : 0;
+        score += volumeExpansion ? 8 : 0;
         score += 12;
-        score += macd.justGolden ? 10 : macd.isGolden && macd.rising ? 7 : 0;
+        score += macdZeroRed ? 10 : macd.justGolden ? 8 : macd.isGolden && macd.rising ? 6 : 0;
         score += Math.max(0, 8 - Math.max(0, amplitude - 5) * 2);
         score = Math.round(Math.max(0, Math.min(100, score)));
         if (score < 68) return null;
@@ -1238,13 +1288,20 @@
         if (stock.turnover >= 5 && stock.turnover <= 10) reasons.push("换手率处在 5%-10% 核心区间");
         reasons.push("均线多头排列，且收盘价站上 5 日线");
         reasons.push(`最近连续上涨 ${consecutiveUp} 天，未触发三连涨排除`);
-        if (macd.justGolden) reasons.push("MACD 刚金叉");
+        if (recentLimitUp) reasons.push(`近10天出现涨停，距今 ${recentLimitUp.daysAgo} 天`);
+        if (pullbackFromLimitUp <= 8) reasons.push("距最近涨停收盘价回调不超过 8%");
+        if (volumeExpansion) reasons.push("近5日成交量大于近20日均量的 1.2 倍");
+        if (macdZeroRed) reasons.push("MACD 零轴上方且红柱状态");
+        else if (macd.justGolden) reasons.push("MACD 刚金叉");
         if (volumeTrend !== "未放量") reasons.push(`成交量${volumeTrend}`);
 
         return enrich(stock, score, reasons, {
           ma: ma5 > ma10 && ma10 > ma20 ? "多头排列" : ma5 > ma10 ? "短线偏强" : "不满足",
-          macd: macd.justGolden ? "刚金叉" : macd.isGolden && macd.rising ? "金叉延续" : macd.isGolden ? "金叉" : "未金叉",
+          macd: macdZeroRed ? "零轴上红柱" : macd.justGolden ? "刚金叉" : macd.isGolden && macd.rising ? "金叉延续" : macd.isGolden ? "金叉" : "未金叉",
           volumeTrend,
+          limitUp: recentLimitUp ? `${recentLimitUp.daysAgo}天前` : "10天无涨停",
+          pullbackFromLimitUp: recentLimitUp ? formatPct(pullbackFromLimitUp) : "无涨停基准",
+          volumeExpansion: volumeExpansion ? "达标" : "不足",
           amplitude: formatPct(amplitude),
           deviation: formatPct(deviation),
           amount: `${formatNumber(stock.amount / 100000000)}亿`,
@@ -1380,6 +1437,9 @@
               <div class="data-box"><b>${escapeHtml(item.indicators.amountRank || "前30")}</b><span class="small">成交额排名</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.ma)}</b><span class="small">均线</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.macd)}</b><span class="small">MACD</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.limitUp || "未计算")}</b><span class="small">近10天涨停</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.pullbackFromLimitUp || "未计算")}</b><span class="small">涨停后回调</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.volumeExpansion || "未计算")}</b><span class="small">5日量能</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.volumeTrend)}</b><span class="small">量能趋势</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.amplitude)}</b><span class="small">振幅</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.deviation)}</b><span class="small">偏离 MA5</span></div>
@@ -1574,6 +1634,12 @@
         return isoDate(date);
       }
 
+      function getConfirmationWindow(now = new Date()) {
+        const minutes = now.getHours() * 60 + now.getMinutes();
+        if (minutes >= 13 * 60) return { start: "13:00", end: "13:30", label: "13点确认" };
+        return { start: "10:00", end: "10:30", label: "10点确认" };
+      }
+
       function showPanel(panelId) {
         const target = document.getElementById(panelId) ? panelId : "dashboard";
         tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.panel === target)));
@@ -1659,16 +1725,56 @@
         return count;
       }
 
+      function getRecentLimitUp(klines, days) {
+        const recent = klines.slice(-days);
+        for (let index = recent.length - 1; index >= 0; index -= 1) {
+          const item = recent[index];
+          if (item.pct >= 9.5) return { ...item, daysAgo: recent.length - 1 - index };
+        }
+        return null;
+      }
+
+      function hasConsecutiveBearish(klines) {
+        const recent = klines.slice(-2);
+        return recent.length === 2 && recent.every((item) => item.close < item.open);
+      }
+
+      function hasLongUpperShadow(kline) {
+        const bodyHigh = Math.max(kline.open, kline.close);
+        const body = Math.abs(kline.close - kline.open) || 0.01;
+        const upperShadow = kline.high - bodyHigh;
+        return upperShadow / body >= 2 && upperShadow / kline.close > 0.03;
+      }
+
+      function getIntradayMacdStatus(k15, k60, date, endTime) {
+        const rows15 = k15.filter((item) => item.date === date && item.time <= endTime);
+        const rows60 = k60.filter((item) => item.date === date && item.time <= endTime);
+        if (rows15.length < 8 || rows60.length < 3) return { strong: null, label: "分钟MACD数据不足，按分时均线替代确认" };
+        const macd15 = getMacd(rows15.map((item) => item.close));
+        const macd60 = getMacd(rows60.map((item) => item.close));
+        const nearZero = Math.abs(macd15.latestDiff) <= rows15.at(-1).close * 0.01;
+        const fifteenGolden = (macd15.justGolden || macd15.isGolden) && nearZero;
+        const sixtyRising = macd60.rising;
+        return {
+          strong: fifteenGolden && sixtyRising,
+          label: fifteenGolden && sixtyRising ? "15分钟MACD金叉且60分钟DIFF上扬" : "15/60分钟MACD未同步转强",
+        };
+      }
+
       function getMacd(closes) {
         const ema12 = ema(closes, 12);
         const ema26 = ema(closes, 26);
         const dif = ema12.map((value, index) => value - ema26[index]);
         const dea = ema(dif, 9);
         const last = dif.length - 1;
+        const hist = dif.map((value, index) => (value - dea[index]) * 2);
         return {
           isGolden: dif[last] > dea[last],
           justGolden: dif[last] > dea[last] && dif[last - 1] <= dea[last - 1],
           rising: dif[last] > dif[last - 1],
+          latestDiff: dif[last],
+          latestDea: dea[last],
+          latestHist: hist[last],
         };
       }
 

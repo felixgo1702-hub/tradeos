@@ -11,7 +11,12 @@ assert.match(html, /scoreRange\(floatYi, 30, 300, 12\)/, "正式候选市值评�
 assert.match(html, /A级/, "推荐结果应显示A级");
 assert.match(html, /B级/, "推荐结果应显示B级");
 assert.match(html, /C级/, "推荐结果应显示C级");
-assert.match(html, /slice\(0, 1\)/, "10点最终买入名单应最多1只");
-assert.match(html, /Trading OS 版本：v2026\.06\.03-2/, "页面底部应显示当前版本");
+assert.match(html, /slice\(0, 2\)/, "10点最终买入名单应最多2只");
+assert.match(html, /getConfirmationWindow/, "确认阶段应支持10点后或13点后窗口");
+assert.match(html, /current\.volumeRatio >= 2/, "次日确认量比应不低于2.0");
+assert.match(html, /getIntradayMacdStatus/, "次日确认应检查15分钟和60分钟MACD");
+assert.match(html, /getRecentLimitUp/, "近10天涨停应进入候选评分");
+assert.match(html, /pullbackFromLimitUp <= 8/, "涨停后回调8%以内应进入评分");
+assert.match(html, /Trading OS 版本：v2026\.06\.04-1/, "页面底部应显示当前版本");
 
 console.log("selection rule checks passed");
