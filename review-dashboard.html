@@ -779,8 +779,8 @@
             latestMarket.tags = ["收盘后防守候选", ...latestMarket.tags];
           }
 
-          const amountTopCodes = getTopAmountCodes(stocks, 30, afterCloseMode);
-          const filtered = stocks.filter((stock) => passFastFilter(stock, afterCloseMode, amountTopCodes, hotSectorNames)).slice(0, afterCloseMode ? 220 : 120);
+          const sectorAmountTopCodes = getSectorAmountTopCodes(stocks, latestHotSectors, afterCloseMode ? 15 : 15);
+          const filtered = stocks.filter((stock) => passFastFilter(stock, afterCloseMode, sectorAmountTopCodes, hotSectorNames)).slice(0, afterCloseMode ? 220 : 120);
           const scored = [];
           for (let index = 0; index < filtered.length; index += 1) {
             const stock = filtered[index];
@@ -794,7 +794,7 @@
             .sort((a, b) => b.score - a.score)
             .slice(0, latestMarket.score >= 75 ? 8 : 5);
           if (!latestRecommendations.length && afterCloseMode) {
-            latestRecommendations = buildFallbackCandidates(stocks, amountTopCodes, hotSectorNames).slice(0, 8);
+            latestRecommendations = buildFallbackCandidates(stocks, sectorAmountTopCodes, hotSectorNames).slice(0, 8);
           }
           if (latestRecommendations.length) {
             saveCandidates(latestRecommendations, gate.reason ? "明日观察候选" : "盘中候选");
@@ -1258,15 +1258,20 @@
           : '<div class="empty">暂无有效热门板块，按规则不生成正式候选。</div>';
       }
 
-      function getTopAmountCodes(stocks, size, relaxed = false) {
-        const ranked = stocks
-          .filter((stock) => passBaseAmountPool(stock, relaxed))
-          .sort((a, b) => b.amount - a.amount)
-          .slice(0, size);
-        ranked.forEach((stock, index) => {
-          stock.amountRank = index + 1;
+      function getSectorAmountTopCodes(stocks, sectors, size = 15, relaxed = false) {
+        const codes = new Set();
+        sectors.forEach((sector) => {
+          const ranked = stocks
+            .filter((stock) => stock.industry === sector.name && passBaseAmountPool(stock, relaxed))
+            .sort((a, b) => b.amount - a.amount)
+            .slice(0, size);
+          ranked.forEach((stock, index) => {
+            stock.amountRank = index + 1;
+            stock.amountRankLabel = `${sector.name}第${index + 1}名`;
+            codes.add(stock.code);
+          });
         });
-        return new Set(ranked.map((stock) => stock.code));
+        return codes;
       }
 
       function passBaseAmountPool(stock, relaxed = false) {
@@ -1383,7 +1388,7 @@
           amplitude: formatPct(amplitude),
           deviation: formatPct(deviation),
           amount: `${formatNumber(stock.amount / 100000000)}亿`,
-          amountRank: stock.amountRank ? `第${stock.amountRank}名` : "前30",
+          amountRank: stock.amountRankLabel || (stock.amountRank ? `板块内第${stock.amountRank}名` : "板块内前15"),
           floatValue: `${formatNumber(floatYi)}亿`,
           sectorRank: sector ? `TOP${sector.rank}` : "非热门",
           sectorScore: sector ? formatNumber(sector.score) : "无",
@@ -1412,7 +1417,7 @@
           amplitude: formatPct(amplitude),
           deviation: "数据不足",
           amount: `${formatNumber(stock.amount / 100000000)}亿`,
-          amountRank: stock.amountRank ? `第${stock.amountRank}名` : "前30",
+          amountRank: stock.amountRankLabel || (stock.amountRank ? `板块内第${stock.amountRank}名` : "板块内前15"),
           floatValue: `${formatNumber(floatYi)}亿`,
           source: stock.source,
         });
@@ -1449,7 +1454,7 @@
               amplitude: formatPct(amplitude),
               deviation: "待确认",
               amount: `${formatNumber(stock.amount / 100000000)}亿`,
-              amountRank: stock.amountRank ? `第${stock.amountRank}名` : "前30",
+              amountRank: stock.amountRankLabel || (stock.amountRank ? `板块内第${stock.amountRank}名` : "板块内前15"),
               floatValue: `${formatNumber(floatYi)}亿`,
               sectorRank: sector ? `TOP${sector.rank}` : "非热门",
               sectorScore: sector ? formatNumber(sector.score) : "无",
@@ -1522,7 +1527,7 @@
               <div class="data-box"><b>${formatPct(item.turnover)}</b><span class="small">换手</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.floatValue)}</b><span class="small">流通市值</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.amount)}</b><span class="small">成交额</span></div>
-              <div class="data-box"><b>${escapeHtml(item.indicators.amountRank || "前30")}</b><span class="small">成交额排名</span></div>
+              <div class="data-box"><b>${escapeHtml(item.indicators.amountRank || "板块内前15")}</b><span class="small">板块成交额排名</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.sectorScore || "未计算")}</b><span class="small">板块热度</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.sectorUpRatio || "未计算")}</b><span class="small">板块上涨占比</span></div>
               <div class="data-box"><b>${escapeHtml(item.indicators.ma)}</b><span class="small">均线</span></div>

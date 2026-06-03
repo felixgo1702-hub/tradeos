@@ -22,6 +22,10 @@ assert.match(html, /getHotSectors\(stocks, 5\)/, "应先计算热门板块TOP5")
 assert.match(html, /if \(hotSectorNames && !hotSectorNames\.has\(stock\.industry\)\) return false;/, "候选股应硬过滤在热门板块内");
 assert.match(html, /sector\.rank <= 3 \? 10 : 6/, "热门板块TOP3应额外加分");
 assert.match(html, /板块热度/, "推荐卡片应展示板块热度");
+assert.match(html, /getSectorAmountTopCodes\(stocks, latestHotSectors, afterCloseMode \? 15 : 15\)/, "成交额限制应改为热门板块内前15");
+assert.match(html, /stock\.industry === sector\.name && passBaseAmountPool/, "板块成交额排名应在对应热门板块内计算");
+assert.doesNotMatch(html, /getTopAmountCodes\(stocks, 30/, "不应再使用全市场成交额前30作为硬过滤");
+assert.match(html, /板块成交额排名/, "推荐卡片应展示板块内成交额排名");
 assert.match(html, /fetchSinaSectorStocks/, "东方财富不可用时应有新浪行业板块备用路径");
 assert.match(html, /新浪行业/, "备用路径应读取新浪行业节点");
 assert.match(html, /getRecentLimitUp/, "近10天涨停应进入候选评分");

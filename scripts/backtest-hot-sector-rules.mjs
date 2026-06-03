@@ -500,12 +500,20 @@ async function confirmCandidate(candidate, confirmDate) {
   });
 }
 
-function getAmountTopCodes(stocks, relaxed = false) {
-  const ranked = stocks.filter((stock) => passBaseAmountPool(stock, relaxed)).sort((a, b) => b.amount - a.amount).slice(0, 30);
-  ranked.forEach((stock, index) => {
-    stock.amountRank = index + 1;
+function getSectorAmountTopCodes(stocks, sectors, size = 15, relaxed = false) {
+  const codes = new Set();
+  sectors.forEach((sector) => {
+    const ranked = stocks
+      .filter((stock) => stock.industry === sector.name && passBaseAmountPool(stock, relaxed))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, size);
+    ranked.forEach((stock, index) => {
+      stock.amountRank = index + 1;
+      stock.amountRankLabel = `${sector.name}第${index + 1}名`;
+      codes.add(stock.code);
+    });
   });
-  return new Set(ranked.map((stock) => stock.code));
+  return codes;
 }
 
 async function main() {
@@ -535,9 +543,9 @@ async function main() {
     dayStocks.forEach((stock) => {
       stock.hotSector = hotSectorMap.get(stock.industry) || null;
     });
-    const amountTopCodes = getAmountTopCodes(dayStocks, false);
+    const sectorAmountTopCodes = getSectorAmountTopCodes(dayStocks, hotSectors, 15, false);
     const hotPoolCount = dayStocks.filter((item) => hotSectorNames.has(item.industry)).length;
-    const fastPool = dayStocks.filter((item) => passFastFilter(item, false, amountTopCodes, hotSectorNames));
+    const fastPool = dayStocks.filter((item) => passFastFilter(item, false, sectorAmountTopCodes, hotSectorNames));
     const candidates = [];
     for (const stock of fastPool.slice(0, 160)) {
       const scored = scoreStock(stock, stock.klines.filter((item) => item.date <= date).slice(-90));
